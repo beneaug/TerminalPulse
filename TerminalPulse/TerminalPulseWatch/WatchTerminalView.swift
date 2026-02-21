@@ -133,7 +133,7 @@ private let primaryKeys: [ToolbarKey] = [
     .init(id: "down", label: "\u{25BC}\u{FE0E}", special: "Down", supportsHold: false),
     .init(id: "enter", label: "Ret", special: "Enter", supportsHold: false),
     .init(id: "esc", label: "Esc", special: "Escape", supportsHold: true),
-    .init(id: "kbd", label: "⌨", special: "", supportsHold: false),
+    .init(id: "kbd", label: "\u{2328}\u{FE0E}", special: "", supportsHold: false),
 ]
 
 private let secondaryKeys: [ToolbarKey] = [
