@@ -34,6 +34,8 @@
 		AA0000000000000000000018 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000084 /* Assets.xcassets */; };
 		AA0000000000000000000019 /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000F2 /* WatchConnectivity.framework */; };
 		AA000000000000000000001A /* TerminalPulseWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* TerminalPulseWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AA0000000000000000000030 /* StoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000053 /* StoreManager.swift */; };
+		AA0000000000000000000031 /* StoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000053 /* StoreManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -72,6 +74,8 @@
 		AA00000000000000000000F0 /* WatchConnectivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = System/Library/Frameworks/WatchConnectivity.framework; sourceTree = SDKROOT; };
 		AA00000000000000000000F1 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
 		AA00000000000000000000F2 /* WatchConnectivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = System/Library/Frameworks/WatchConnectivity.framework; sourceTree = SDKROOT; };
+		AA0000000000000000000053 /* StoreManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreManager.swift; sourceTree = "<group>"; };
+		AA0000000000000000000054 /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -98,6 +102,7 @@
 		AA00000000000000000000C0 = {
 			isa = PBXGroup;
 			children = (
+				AA0000000000000000000054 /* Products.storekit */,
 				AA00000000000000000000C1 /* Shared */,
 				AA00000000000000000000C2 /* TerminalPulse */,
 				AA00000000000000000000C3 /* TerminalPulseWatch */,
@@ -112,6 +117,7 @@
 				AA0000000000000000000050 /* Models.swift */,
 				AA0000000000000000000051 /* TerminalColors.swift */,
 				AA0000000000000000000052 /* RunsRenderer.swift */,
+				AA0000000000000000000053 /* StoreManager.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -309,6 +315,7 @@
 				AA000000000000000000000C /* CaptureCache.swift in Sources */,
 				AA0000000000000000000020 /* KeychainService.swift in Sources */,
 				AA0000000000000000000022 /* OnboardingView.swift in Sources */,
+				AA0000000000000000000030 /* StoreManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -322,6 +329,7 @@
 				AA0000000000000000000014 /* TerminalPulseWatchApp.swift in Sources */,
 				AA0000000000000000000015 /* WatchTerminalView.swift in Sources */,
 				AA0000000000000000000017 /* PhoneBridge.swift in Sources */,
+				AA0000000000000000000031 /* StoreManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

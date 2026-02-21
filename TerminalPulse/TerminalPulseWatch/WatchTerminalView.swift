@@ -14,9 +14,11 @@ struct WatchTerminalView: View {
 
             WatchStatusOverlay(bridge: bridge)
 
-            VStack {
-                Spacer()
-                WatchInputToolbar(bridge: bridge, showTextInput: $showTextInput)
+            if StoreManager.shared.isProUnlocked {
+                VStack {
+                    Spacer()
+                    WatchInputToolbar(bridge: bridge, showTextInput: $showTextInput)
+                }
             }
         }
         .ignoresSafeArea()

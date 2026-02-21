@@ -143,8 +143,63 @@ struct SettingsView: View {
             } header: {
                 Text("Apple Watch")
             }
+
+            Section {
+                ProUpgradeRow()
+            } header: {
+                Text("Watch Input")
+            }
         }
         .navigationTitle("Settings")
+    }
+
+    // MARK: - Pro Upgrade
+
+    struct ProUpgradeRow: View {
+        private var store = StoreManager.shared
+
+        var body: some View {
+            if store.isProUnlocked {
+                HStack {
+                    Label("Watch Input", systemImage: "applewatch")
+                    Spacer()
+                    Text("Unlocked")
+                        .foregroundStyle(.green)
+                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Send keys to tmux from your Apple Watch — dictation, scribble, and a full key toolbar.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Button {
+                        Task { await store.purchase() }
+                    } label: {
+                        HStack {
+                            Text("Unlock Watch Input")
+                            Spacer()
+                            if let product = store.proProduct {
+                                Text(product.displayPrice)
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                    }
+                    .disabled(store.purchaseState == .purchasing)
+
+                    if case .failed(let msg) = store.purchaseState {
+                        Text(msg)
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                    }
+
+                    Button("Restore Purchase") {
+                        Task { await store.restore() }
+                    }
+                    .font(.caption)
+                }
+            }
+        }
     }
 
     private func testConnection() {
