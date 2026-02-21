@@ -61,7 +61,6 @@ private struct WatchTerminalContent: View {
             }
             .defaultScrollAnchor(.bottom)
             .ignoresSafeArea()
-            .focusable(true) // Digital Crown scrolls terminal only
         }
     }
 }
@@ -134,7 +133,7 @@ private let primaryKeys: [ToolbarKey] = [
     .init(id: "down", label: "\u{25BC}\u{FE0E}", special: "Down", supportsHold: false),
     .init(id: "enter", label: "Ret", special: "Enter", supportsHold: false),
     .init(id: "esc", label: "Esc", special: "Escape", supportsHold: true),
-    .init(id: "kbd", label: "\u{2328}\u{FE0E}", special: "", supportsHold: false),
+    .init(id: "kbd", label: "Aa", special: "", supportsHold: false),
 ]
 
 private let secondaryKeys: [ToolbarKey] = [
@@ -152,6 +151,8 @@ private struct WatchInputToolbar: View {
     @Binding var showTextInput: Bool
     @State private var holdingKey: String?
     @State private var holdTimer: Timer?
+    @State private var toolbarOffset: CGFloat = 0
+    @State private var dragStart: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -169,7 +170,9 @@ private struct WatchInputToolbar: View {
                     .transition(.opacity)
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            // Manual horizontal scroll — no ScrollView, so Digital Crown
+            // is never captured and always drives the terminal.
+            GeometryReader { geo in
                 HStack(spacing: 4) {
                     ForEach(primaryKeys) { key in
                         if key.id == "kbd" {
@@ -181,19 +184,34 @@ private struct WatchInputToolbar: View {
                         }
                     }
 
-                    Divider()
-                        .frame(height: 20)
-                        .background(Color.white.opacity(0.1))
+                    Rectangle()
+                        .fill(Color.white.opacity(0.15))
+                        .frame(width: 1, height: 20)
 
                     ForEach(secondaryKeys) { key in
                         toolbarButton(for: key)
                     }
                 }
                 .padding(.horizontal, 4)
+                .offset(x: toolbarOffset)
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            toolbarOffset = dragStart + value.translation.width
+                        }
+                        .onEnded { value in
+                            let maxOffset: CGFloat = 0
+                            let contentWidth: CGFloat = 520 // approximate total width
+                            let minOffset = -(contentWidth - geo.size.width)
+                            dragStart = min(maxOffset, max(minOffset, toolbarOffset))
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                toolbarOffset = dragStart
+                            }
+                        }
+                )
             }
-            .scrollDisabled(false) // finger swipe works
-            .allowsHitTesting(true)
-            .focusable(false) // prevent Digital Crown from scrolling toolbar
+            .frame(height: 34)
+            .clipped()
         }
         .padding(.bottom, 2)
         .background(

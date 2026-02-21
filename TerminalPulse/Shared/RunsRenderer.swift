@@ -51,11 +51,50 @@ enum RunsRenderer {
                     attrs.underlineStyle = .single
                 }
 
-                line.append(AttributedString(run.t, attributes: attrs))
+                line.append(AttributedString(Self.forceTextPresentation(run.t), attributes: attrs))
             }
 
             return line
         }
+    }
+
+    /// Characters that Apple renders as emoji by default but should be text glyphs
+    /// in a terminal context. Appending U+FE0E forces text presentation.
+    private static let emojiProne: Set<Unicode.Scalar> = {
+        var s = Set<Unicode.Scalar>()
+        // Common terminal symbols that get emoji-ified
+        let ranges: [(UInt32, UInt32)] = [
+            (0x23E9, 0x23FA),   // ⏩–⏺ (transport/media symbols)
+            (0x25A0, 0x25FF),   // ■–◿ (geometric shapes)
+            (0x2600, 0x26FF),   // ☀–⛿ (misc symbols)
+            (0x2700, 0x27BF),   // ✀–➿ (dingbats)
+            (0x2B05, 0x2B55),   // ⬅–⭕ (arrows, shapes)
+        ]
+        for (lo, hi) in ranges {
+            for v in lo...hi {
+                if let sc = Unicode.Scalar(v) { s.insert(sc) }
+            }
+        }
+        // Individual characters
+        for ch: UInt32 in [0x2328, 0x23CF, 0x25B6, 0x25C0, 0x2934, 0x2935, 0x203C, 0x2049] {
+            if let sc = Unicode.Scalar(ch) { s.insert(sc) }
+        }
+        return s
+    }()
+
+    /// Insert U+FE0E after any character that Apple might render as emoji.
+    private static func forceTextPresentation(_ text: String) -> String {
+        var result = ""
+        result.reserveCapacity(text.count)
+        for char in text {
+            result.append(char)
+            if char.unicodeScalars.count == 1,
+               let scalar = char.unicodeScalars.first,
+               emojiProne.contains(scalar) {
+                result.append("\u{FE0E}")
+            }
+        }
+        return result
     }
 
     /// Legacy single-string builder (used by watch PhoneBridge for backward compat).
