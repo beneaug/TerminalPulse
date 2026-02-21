@@ -43,12 +43,7 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     }
 
     func sendKeys(text: String? = nil, special: String? = nil) {
-        guard let session, session.isReachable else {
-            sendStatus = .error("Phone unreachable")
-            WKInterfaceDevice.current().play(.failure)
-            clearStatusAfterDelay()
-            return
-        }
+        guard let session else { return }
 
         var msg: [String: Any] = ["action": "sendKeys"]
         if let text { msg["text"] = text }

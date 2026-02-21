@@ -149,14 +149,27 @@ if launchctl print "gui/$(id -u)/$OLD_PLIST_NAME" &>/dev/null; then
     ok "Removed legacy service"
 fi
 
-# ── Server directory ──────────────────────────────────────
-if [[ -d "$INSTALL_DIR" ]]; then
-    info "Server directory exists at $INSTALL_DIR"
+# ── Server files ─────────────────────────────────────────
+mkdir -p "$INSTALL_DIR"
+GITHUB_RAW="https://raw.githubusercontent.com/beneaug/TerminalPulse/main/server"
+SERVER_FILES="main.py tmux_bridge.py ansi_parser.py requirements.txt"
+
+# Download/update server files from GitHub (skip if running from repo)
+if [[ "$INSTALL_DIR" != *"TerminalPulse"* ]]; then
+    info "Downloading server files..."
+    for f in $SERVER_FILES; do
+        if curl -sSfL "$GITHUB_RAW/$f" -o "$INSTALL_DIR/$f" 2>/dev/null; then
+            ok "Downloaded $f"
+        else
+            if [[ -f "$INSTALL_DIR/$f" ]]; then
+                warn "Could not update $f — using existing copy"
+            else
+                fail "Could not download $f and no existing copy found"
+            fi
+        fi
+    done
 else
-    info "Creating server directory..."
-    mkdir -p "$INSTALL_DIR"
-    warn "You'll need to copy server files to $INSTALL_DIR"
-    warn "(main.py, tmux_bridge.py, ansi_parser.py, requirements.txt)"
+    info "Running from repo — using local server files at $INSTALL_DIR"
 fi
 
 # ── Create / verify virtual environment ───────────────────
