@@ -151,8 +151,6 @@ private struct WatchInputToolbar: View {
     @Binding var showTextInput: Bool
     @State private var holdingKey: String?
     @State private var holdTimer: Timer?
-    @State private var toolbarOffset: CGFloat = 0
-    @State private var dragStart: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -170,9 +168,7 @@ private struct WatchInputToolbar: View {
                     .transition(.opacity)
             }
 
-            // Manual horizontal scroll — no ScrollView, so Digital Crown
-            // is never captured and always drives the terminal.
-            GeometryReader { geo in
+            ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
                     ForEach(primaryKeys) { key in
                         if key.id == "kbd" {
@@ -184,34 +180,17 @@ private struct WatchInputToolbar: View {
                         }
                     }
 
-                    Rectangle()
-                        .fill(Color.white.opacity(0.15))
-                        .frame(width: 1, height: 20)
+                    Divider()
+                        .frame(height: 20)
+                        .background(Color.white.opacity(0.1))
 
                     ForEach(secondaryKeys) { key in
                         toolbarButton(for: key)
                     }
                 }
                 .padding(.horizontal, 4)
-                .offset(x: toolbarOffset)
-                .gesture(
-                    DragGesture()
-                        .onChanged { value in
-                            toolbarOffset = dragStart + value.translation.width
-                        }
-                        .onEnded { value in
-                            let maxOffset: CGFloat = 0
-                            let contentWidth: CGFloat = 520 // approximate total width
-                            let minOffset = -(contentWidth - geo.size.width)
-                            dragStart = min(maxOffset, max(minOffset, toolbarOffset))
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                toolbarOffset = dragStart
-                            }
-                        }
-                )
             }
-            .frame(height: 34)
-            .clipped()
+            .focusable(false)
         }
         .padding(.bottom, 2)
         .background(
