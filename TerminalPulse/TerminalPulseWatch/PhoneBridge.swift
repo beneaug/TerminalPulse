@@ -20,6 +20,7 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     var host = ""
     var currentPaneId: String?
     var sendStatus: SendStatus = .idle
+    var isProUnlocked = false
 
     private var session: WCSession?
     private var currentHash = ""
@@ -114,6 +115,9 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
                 UserDefaults.standard.set(syncedFontSize, forKey: "watchFontSize")
                 settingsChanged = true
             }
+        }
+        if let proStatus = dict["_proUnlocked"] as? Bool {
+            isProUnlocked = proStatus
         }
         if let syncedTheme = dict["_colorTheme"] as? String {
             let current = UserDefaults.standard.string(forKey: "colorTheme") ?? "default"

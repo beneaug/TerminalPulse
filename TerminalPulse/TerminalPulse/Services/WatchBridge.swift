@@ -50,6 +50,14 @@ final class WatchBridge: NSObject, WCSessionDelegate {
         transmit(dict, via: session)
     }
 
+    /// Push pro status to the watch immediately after purchase.
+    func syncProStatus() {
+        guard let session, session.activationState == .activated else { return }
+        var dict: [String: Any] = ["_settingsOnly": true]
+        injectSettings(into: &dict)
+        transmit(dict, via: session)
+    }
+
     private func injectSettings(into dict: inout [String: Any]) {
         let watchFontSize = UserDefaults.standard.integer(forKey: "watchFontSize")
         if watchFontSize > 0 {
@@ -62,6 +70,7 @@ final class WatchBridge: NSObject, WCSessionDelegate {
         if pollInterval > 0 {
             dict["_pollInterval"] = pollInterval
         }
+        dict["_proUnlocked"] = StoreManager.shared.isProUnlocked
     }
 
     private func transmit(_ dict: [String: Any], via session: WCSession) {

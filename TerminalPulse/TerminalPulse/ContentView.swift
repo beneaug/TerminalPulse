@@ -54,6 +54,9 @@ struct ContentView: View {
                     }
                 }
             }
+            StoreManager.shared.onProStatusChanged = { _ in
+                watchBridge.syncProStatus()
+            }
             PollingService.backgroundRefreshHandler = { polling.handleBackgroundRefresh(task: $0) }
             polling.start()
         }

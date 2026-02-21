@@ -6,9 +6,18 @@ import StoreKit
 final class StoreManager {
     static let shared = StoreManager()
 
-    private(set) var isProUnlocked = false
+    private(set) var isProUnlocked = false {
+        didSet {
+            if isProUnlocked != oldValue {
+                onProStatusChanged?(isProUnlocked)
+            }
+        }
+    }
     private(set) var proProduct: Product?
     private(set) var purchaseState: PurchaseState = .idle
+
+    /// Called when pro status changes — iPhone uses this to sync to watch.
+    var onProStatusChanged: ((Bool) -> Void)?
 
     static let proProductID = "com.tmuxonwatch.pro"
 
