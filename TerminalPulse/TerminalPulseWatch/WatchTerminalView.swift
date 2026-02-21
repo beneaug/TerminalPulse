@@ -151,8 +151,6 @@ private struct WatchInputToolbar: View {
     @Binding var showTextInput: Bool
     @State private var holdingKey: String?
     @State private var holdTimer: Timer?
-    @State private var offset: CGFloat = 0
-    @State private var dragBase: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -170,46 +168,28 @@ private struct WatchInputToolbar: View {
                     .transition(.opacity)
             }
 
-            // No ScrollView — prevents Digital Crown from ever capturing the toolbar.
-            // Finger drag handled manually via DragGesture + offset.
-            HStack(spacing: 4) {
-                ForEach(primaryKeys) { key in
-                    if key.id == "kbd" {
-                        ToolbarButton(label: key.label, isHolding: false) {
-                            showTextInput = true
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(primaryKeys) { key in
+                        if key.id == "kbd" {
+                            ToolbarButton(label: key.label, isHolding: false) {
+                                showTextInput = true
+                            }
+                        } else {
+                            toolbarButton(for: key)
                         }
-                    } else {
+                    }
+
+                    Divider()
+                        .frame(height: 20)
+                        .background(Color.white.opacity(0.1))
+
+                    ForEach(secondaryKeys) { key in
                         toolbarButton(for: key)
                     }
                 }
-
-                Rectangle()
-                    .fill(Color.white.opacity(0.15))
-                    .frame(width: 1, height: 20)
-
-                ForEach(secondaryKeys) { key in
-                    toolbarButton(for: key)
-                }
+                .padding(.horizontal, 4)
             }
-            .padding(.horizontal, 4)
-            .fixedSize() // let HStack use its natural width
-            .offset(x: offset)
-            .gesture(
-                DragGesture(minimumDistance: 5)
-                    .onChanged { value in
-                        offset = dragBase + value.translation.width
-                    }
-                    .onEnded { _ in
-                        // Clamp: can't scroll past start, and limit right scroll
-                        let clamped = min(0, max(-300, offset))
-                        dragBase = clamped
-                        withAnimation(.easeOut(duration: 0.15)) {
-                            offset = clamped
-                        }
-                    }
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .clipped()
         }
         .padding(.bottom, 2)
         .background(
