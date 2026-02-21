@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.terminalpulse.server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>source "$HOME/.config/terminalpulse/env" 2>/dev/null; exec "$HOME/TerminalPulse/server/.venv/bin/python3" -m uvicorn main:app --host 127.0.0.1 --port 8787</string>
+    </array>
+
+    <!-- Replace with your actual server path, e.g. /Users/yourname/TerminalPulse/server -->
+    <!-- The install script generates this plist automatically with correct paths -->
+    <key>WorkingDirectory</key>
+    <string>/Users/REPLACE_ME/TerminalPulse/server</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/terminalpulse.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/terminalpulse.err.log</string>
+</dict>
+</plist>
