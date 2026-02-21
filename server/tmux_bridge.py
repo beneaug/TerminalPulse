@@ -105,6 +105,53 @@ async def list_sessions() -> list[SessionInfo]:
     return sessions
 
 
+_ALLOWED_SPECIAL_KEYS: frozenset[str] = frozenset({
+    "Enter", "Escape", "Tab", "BSpace",
+    "Up", "Down", "Left", "Right",
+    "C-c", "C-d", "C-z", "C-l", "C-a", "C-e", "C-r", "C-u", "C-k", "C-w",
+    "Space", "Home", "End", "PageUp", "PageDown",
+})
+
+_MAX_TEXT_LENGTH = 512
+
+
+async def send_keys(
+    text: str | None = None,
+    special: str | None = None,
+    target: str | None = None,
+) -> None:
+    """Send keystrokes to a tmux pane.
+
+    Exactly one of *text* or *special* must be provided.
+    - text: sent literally via ``tmux send-keys -l`` (no key interpretation).
+    - special: must be in ``_ALLOWED_SPECIAL_KEYS``; sent as a tmux key name.
+    """
+    _validate_target(target)
+
+    if text is not None and special is not None:
+        raise ValueError("Provide exactly one of text or special, not both")
+    if text is None and special is None:
+        raise ValueError("Provide exactly one of text or special")
+
+    if text is not None:
+        if len(text) > _MAX_TEXT_LENGTH:
+            raise ValueError(f"Text exceeds {_MAX_TEXT_LENGTH} characters")
+        cmd = ["tmux", "send-keys", "-l"]
+        if target:
+            cmd.extend(["-t", target])
+        cmd.append(text)
+    else:
+        assert special is not None
+        if special not in _ALLOWED_SPECIAL_KEYS:
+            raise ValueError(f"Special key {special!r} not allowed")
+        cmd = ["tmux", "send-keys"]
+        if target:
+            cmd.extend(["-t", target])
+        cmd.append(special)
+
+    await _run(*cmd)
+
+
 async def has_tmux() -> bool:
     """Check if tmux server is running."""
     try:

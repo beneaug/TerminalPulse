@@ -7,6 +7,7 @@ final class WatchBridge: NSObject, WCSessionDelegate {
     var isReachable = false
     private var session: WCSession?
     var onRefreshRequested: (() -> Void)?
+    var onSendKeysRequested: ((_ text: String?, _ special: String?, _ paneId: String?, _ reply: @escaping (Bool, String?) -> Void) -> Void)?
 
     override init() {
         super.init()
@@ -140,6 +141,34 @@ final class WatchBridge: NSObject, WCSessionDelegate {
             Task { @MainActor in
                 self.onRefreshRequested?()
             }
+        }
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
+        if message["action"] as? String == "sendKeys" {
+            let text = message["text"] as? String
+            let special = message["special"] as? String
+            let paneId = message["paneId"] as? String
+            Task { @MainActor in
+                guard let handler = self.onSendKeysRequested else {
+                    replyHandler(["ok": false, "error": "Not configured"])
+                    return
+                }
+                handler(text, special, paneId) { ok, error in
+                    if ok {
+                        replyHandler(["ok": true])
+                    } else {
+                        replyHandler(["ok": false, "error": error ?? "Unknown error"])
+                    }
+                }
+            }
+        } else if message["action"] as? String == "refresh" {
+            Task { @MainActor in
+                self.onRefreshRequested?()
+            }
+            replyHandler(["ok": true])
+        } else {
+            replyHandler(["ok": false, "error": "Unknown action"])
         }
     }
 }

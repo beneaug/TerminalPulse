@@ -61,6 +61,18 @@ struct TerminalRun: Codable, Sendable {
     }
 }
 
+// MARK: - Send Keys
+
+struct SendKeysRequest: Codable {
+    var text: String?
+    var special: String?
+    var target: String?
+}
+
+struct SendKeysResponse: Codable {
+    let ok: Bool
+}
+
 // MARK: - Watch Payload
 
 extension Int {

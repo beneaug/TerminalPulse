@@ -6,16 +6,26 @@ import SwiftUI
 @Observable
 @MainActor
 final class PhoneBridge: NSObject, WCSessionDelegate {
+    enum SendStatus: Equatable {
+        case idle
+        case sending
+        case sent(String)
+        case error(String)
+    }
+
     var renderedLines: [AttributedString] = []
     var sessionLabel = ""
     var lastUpdate: Date?
     var isConnected = false
     var host = ""
+    var currentPaneId: String?
+    var sendStatus: SendStatus = .idle
 
     private var session: WCSession?
     private var currentHash = ""
     private var refreshTimer: Timer?
     private var wasDisconnected = false
+    private var statusClearTask: Task<Void, Never>?
     private static let isoFormatter = ISO8601DateFormatter()
 
     override init() {
@@ -30,6 +40,54 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
 
     func requestRefresh() {
         session?.sendMessage(["action": "refresh"], replyHandler: nil, errorHandler: nil)
+    }
+
+    func sendKeys(text: String? = nil, special: String? = nil) {
+        guard let session, session.isReachable else {
+            sendStatus = .error("Phone unreachable")
+            WKInterfaceDevice.current().play(.failure)
+            clearStatusAfterDelay()
+            return
+        }
+
+        var msg: [String: Any] = ["action": "sendKeys"]
+        if let text { msg["text"] = text }
+        if let special { msg["special"] = special }
+        if let currentPaneId { msg["paneId"] = currentPaneId }
+
+        sendStatus = .sending
+
+        session.sendMessage(msg, replyHandler: { [weak self] reply in
+            Task { @MainActor in
+                guard let self else { return }
+                if reply["ok"] as? Bool == true {
+                    let label = text ?? special ?? "key"
+                    self.sendStatus = .sent(label)
+                    WKInterfaceDevice.current().play(.click)
+                } else {
+                    let err = reply["error"] as? String ?? "Failed"
+                    self.sendStatus = .error(err)
+                    WKInterfaceDevice.current().play(.failure)
+                }
+                self.clearStatusAfterDelay()
+            }
+        }, errorHandler: { [weak self] error in
+            Task { @MainActor in
+                guard let self else { return }
+                self.sendStatus = .error(error.localizedDescription)
+                WKInterfaceDevice.current().play(.failure)
+                self.clearStatusAfterDelay()
+            }
+        })
+    }
+
+    private func clearStatusAfterDelay() {
+        statusClearTask?.cancel()
+        statusClearTask = Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            sendStatus = .idle
+        }
     }
 
     /// Start periodic refresh requests while the watch app is visible.
@@ -81,6 +139,9 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
         }
 
         guard let payload = WatchPayload.from(dictionary: dict) else { return }
+
+        // Track the current pane for send-keys targeting
+        currentPaneId = payload.paneId
 
         // Re-render if content changed OR settings changed (even with same hash)
         guard payload.hash != currentHash || settingsChanged else { return }

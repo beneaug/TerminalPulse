@@ -18,6 +18,18 @@ actor APIClient {
         KeychainService.load(key: "authToken") ?? ""
     }
 
+    private func postRequest(path: String, body: some Encodable) throws -> URLRequest {
+        guard let url = URL(string: serverURL + path) else {
+            throw APIError.badURL(serverURL + path)
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(body)
+        return req
+    }
+
     private func request(path: String, queryItems: [URLQueryItem] = []) throws -> URLRequest {
         guard var components = URLComponents(string: serverURL + path) else {
             throw APIError.badURL(serverURL + path)
@@ -60,6 +72,15 @@ actor APIClient {
             throw APIError.badStatus((response as? HTTPURLResponse)?.statusCode ?? 0)
         }
         return try JSONDecoder().decode(SessionsResponse.self, from: data)
+    }
+    func sendKeys(text: String? = nil, special: String? = nil, target: String? = nil) async throws -> SendKeysResponse {
+        let body = SendKeysRequest(text: text, special: special, target: target)
+        let req = try postRequest(path: "/send-keys", body: body)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw APIError.badStatus((response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+        return try JSONDecoder().decode(SendKeysResponse.self, from: data)
     }
 }
 

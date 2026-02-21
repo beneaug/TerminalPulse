@@ -5,13 +5,16 @@ from __future__ import annotations
 import hashlib
 import os
 import socket
+import time
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, model_validator
 
 from ansi_parser import parse_lines
-from tmux_bridge import capture_pane, get_pane_info, has_tmux, list_sessions
+from tmux_bridge import capture_pane, get_pane_info, has_tmux, list_sessions, send_keys
 
 app = FastAPI(title="TerminalPulse", version="1.0.0")
 _security = HTTPBearer()
@@ -95,6 +98,51 @@ async def sessions(_: str = Depends(_verify)):
             for s in sess_list
         ]
     }
+
+
+class SendKeysRequest(BaseModel):
+    text: Optional[str] = None
+    special: Optional[str] = None
+    target: Optional[str] = None
+
+    @model_validator(mode="after")
+    def exactly_one(self):
+        if (self.text is None) == (self.special is None):
+            raise ValueError("Provide exactly one of text or special")
+        return self
+
+
+class _RateLimiter:
+    """Simple in-memory sliding-window rate limiter."""
+
+    def __init__(self, max_per_sec: int = 20):
+        self._max = max_per_sec
+        self._timestamps: list[float] = []
+
+    def check(self) -> None:
+        now = time.monotonic()
+        self._timestamps = [t for t in self._timestamps if now - t < 1.0]
+        if len(self._timestamps) >= self._max:
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+        self._timestamps.append(now)
+
+
+_send_keys_limiter = _RateLimiter(max_per_sec=20)
+
+
+@app.post("/send-keys")
+async def post_send_keys(
+    body: SendKeysRequest,
+    _: str = Depends(_verify),
+):
+    _send_keys_limiter.check()
+    try:
+        await send_keys(text=body.text, special=body.special, target=body.target)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    return {"ok": True}
 
 
 if __name__ == "__main__":

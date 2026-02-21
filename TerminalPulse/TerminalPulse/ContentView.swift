@@ -42,6 +42,18 @@ struct ContentView: View {
         .onAppear {
             polling.watchBridge = watchBridge
             watchBridge.onRefreshRequested = { polling.fetchNow() }
+            watchBridge.onSendKeysRequested = { text, special, paneId, reply in
+                let target = paneId ?? polling.selectedTarget
+                Task {
+                    do {
+                        _ = try await APIClient().sendKeys(text: text, special: special, target: target)
+                        reply(true, nil)
+                        polling.fetchNow()
+                    } catch {
+                        reply(false, error.localizedDescription)
+                    }
+                }
+            }
             PollingService.backgroundRefreshHandler = { polling.handleBackgroundRefresh(task: $0) }
             polling.start()
         }
