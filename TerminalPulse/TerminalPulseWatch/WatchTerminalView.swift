@@ -61,6 +61,7 @@ private struct WatchTerminalContent: View {
             }
             .defaultScrollAnchor(.bottom)
             .ignoresSafeArea()
+            .focusable(true) // Digital Crown scrolls terminal only
         }
     }
 }
@@ -129,11 +130,11 @@ private struct ToolbarKey: Identifiable {
 }
 
 private let primaryKeys: [ToolbarKey] = [
-    .init(id: "up", label: "▲", special: "Up", supportsHold: false),
-    .init(id: "down", label: "▼", special: "Down", supportsHold: false),
-    .init(id: "enter", label: "Enter", special: "Enter", supportsHold: false),
+    .init(id: "up", label: "\u{25B2}\u{FE0E}", special: "Up", supportsHold: false),
+    .init(id: "down", label: "\u{25BC}\u{FE0E}", special: "Down", supportsHold: false),
+    .init(id: "enter", label: "Ret", special: "Enter", supportsHold: false),
     .init(id: "esc", label: "Esc", special: "Escape", supportsHold: true),
-    .init(id: "kbd", label: "⌨", special: "", supportsHold: false),
+    .init(id: "kbd", label: "\u{2328}\u{FE0E}", special: "", supportsHold: false),
 ]
 
 private let secondaryKeys: [ToolbarKey] = [
@@ -142,8 +143,8 @@ private let secondaryKeys: [ToolbarKey] = [
     .init(id: "ctrld", label: "^D", special: "C-d", supportsHold: true),
     .init(id: "ctrlz", label: "^Z", special: "C-z", supportsHold: true),
     .init(id: "ctrll", label: "^L", special: "C-l", supportsHold: true),
-    .init(id: "left", label: "◄", special: "Left", supportsHold: false),
-    .init(id: "right", label: "►", special: "Right", supportsHold: false),
+    .init(id: "left", label: "\u{25C4}\u{FE0E}", special: "Left", supportsHold: false),
+    .init(id: "right", label: "\u{25BA}\u{FE0E}", special: "Right", supportsHold: false),
 ]
 
 private struct WatchInputToolbar: View {
@@ -190,6 +191,9 @@ private struct WatchInputToolbar: View {
                 }
                 .padding(.horizontal, 4)
             }
+            .scrollDisabled(false) // finger swipe works
+            .allowsHitTesting(true)
+            .focusable(false) // prevent Digital Crown from scrolling toolbar
         }
         .padding(.bottom, 2)
         .background(

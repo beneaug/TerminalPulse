@@ -131,9 +131,13 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
             UserDefaults.standard.set(syncedPollInterval, forKey: "pollInterval")
         }
 
-        // Settings-only message — just re-render cached output with new settings
+        // Settings-only message — re-render cached output with new settings
+        // and request a fresh capture so colors update immediately
         if dict["_settingsOnly"] as? Bool == true {
-            if settingsChanged { rerenderCached() }
+            if settingsChanged {
+                rerenderCached()
+                requestRefresh()
+            }
             return
         }
 
