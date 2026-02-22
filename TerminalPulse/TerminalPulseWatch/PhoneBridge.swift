@@ -40,7 +40,17 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     }
 
     func requestRefresh() {
-        session?.sendMessage(["action": "refresh"], replyHandler: nil, errorHandler: nil)
+        session?.sendMessage(["action": "refresh"], replyHandler: { [weak self] _ in
+            Task { @MainActor in
+                self?.isConnected = true
+            }
+        }, errorHandler: { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.wasDisconnected = true
+                self.isConnected = false
+            }
+        })
     }
 
     func sendKeys(text: String? = nil, special: String? = nil) {
@@ -205,12 +215,26 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
 
     // MARK: - WCSessionDelegate
 
-    nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {}
+    nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
+        guard activationState == .activated else { return }
+        Task { @MainActor in
+            if session.isReachable {
+                self.requestRefresh()
+            }
+        }
+    }
 
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         Task { @MainActor in
-            if !session.isReachable {
+            if session.isReachable {
+                // Phone came back — immediately pull fresh data
+                if self.wasDisconnected {
+                    self.requestRefresh()
+                }
+                self.isConnected = true
+            } else {
                 self.wasDisconnected = true
+                self.isConnected = false
             }
         }
     }
