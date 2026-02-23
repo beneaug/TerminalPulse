@@ -24,7 +24,6 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
 
     private var session: WCSession?
     private var currentHash = ""
-    private var refreshTimer: Timer?
     private var wasDisconnected = false
     private var statusClearTask: Task<Void, Never>?
     private static let isoFormatter = ISO8601DateFormatter()
@@ -96,23 +95,6 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
         }
     }
 
-    /// Start periodic refresh requests while the watch app is visible.
-    /// Uses the iPhone's synced poll interval, with a minimum of 5 seconds.
-    func startAutoRefresh() {
-        stopAutoRefresh()
-        let syncedInterval = UserDefaults.standard.integer(forKey: "pollInterval")
-        let interval = TimeInterval(max(syncedInterval, 5))
-        requestRefresh() // Immediate first request
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            Task { @MainActor in self.requestRefresh() }
-        }
-    }
-
-    func stopAutoRefresh() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
-    }
 
     // MARK: - Payload handling
 
@@ -145,6 +127,7 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
         // and request a fresh capture so colors update immediately
         if dict["_settingsOnly"] as? Bool == true {
             if settingsChanged {
+                currentHash = "" // Force accept next payload (dividers recalculated at new font size)
                 rerenderCached()
                 requestRefresh()
             }
@@ -218,20 +201,18 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
         guard activationState == .activated else { return }
         Task { @MainActor in
-            if session.isReachable {
-                self.requestRefresh()
-            }
+            // Always request fresh data when session activates
+            self.requestRefresh()
         }
     }
 
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         Task { @MainActor in
             if session.isReachable {
-                // Phone came back — immediately pull fresh data
-                if self.wasDisconnected {
-                    self.requestRefresh()
-                }
+                // Phone became reachable — one-shot refresh to get fresh data
+                self.requestRefresh()
                 self.isConnected = true
+                self.wasDisconnected = false
             } else {
                 self.wasDisconnected = true
                 self.isConnected = false

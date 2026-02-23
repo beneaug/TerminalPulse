@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 struct SettingsView: View {
     @AppStorage("serverURL") private var serverURL = "http://127.0.0.1:8787"
@@ -13,9 +14,14 @@ struct SettingsView: View {
     @State private var testSuccess = false
     @State private var isTesting = false
 
+    @State private var showResetConfirm = false
+    @State private var isScanning = false
+    @State private var showCameraDeniedAlert = false
+
     var watchReachable: Bool
     var onPollIntervalChanged: (() -> Void)?
     var onAppearanceChanged: (() -> Void)?
+    var onDemoLoaded: (() -> Void)?
 
     var body: some View {
         Form {
@@ -59,6 +65,31 @@ struct SettingsView: View {
                     Text(result)
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(testSuccess ? .green : .red)
+                }
+
+                Button {
+                    checkCameraAndScan()
+                } label: {
+                    HStack {
+                        Image(systemName: "qrcode")
+                        Text("Scan QR Code")
+                    }
+                }
+                .sheet(isPresented: $isScanning) {
+                    QRScannerView { result in
+                        isScanning = false
+                        handleQRResult(result)
+                    }
+                }
+                .alert("Camera Access Required", isPresented: $showCameraDeniedAlert) {
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Camera access is needed to scan the QR code. Enable it in Settings.")
                 }
             } header: {
                 Text("Connection")
@@ -149,6 +180,33 @@ struct SettingsView: View {
             } header: {
                 Text("Watch Input")
             }
+
+            Section {
+                Button(role: .destructive) {
+                    showResetConfirm = true
+                } label: {
+                    HStack {
+                        Image(systemName: "play.circle")
+                        Text("Load Demo Data")
+                    }
+                }
+                .confirmationDialog("Load Demo Data?", isPresented: $showResetConfirm) {
+                    Button("Load Demo", role: .destructive) {
+                        DemoData.activate()
+                        serverURL = "http://127.0.0.1:8787"
+                        authToken = ""
+                        KeychainService.delete(key: "authToken")
+                        onDemoLoaded?()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This clears your server connection and loads sample terminal output. You can reconnect anytime.")
+                }
+            } header: {
+                Text("Demo")
+            } footer: {
+                Text("Load sample data for testing without a server.")
+            }
         }
         .navigationTitle("Settings")
     }
@@ -216,5 +274,39 @@ struct SettingsView: View {
             }
             isTesting = false
         }
+    }
+
+    private func checkCameraAndScan() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            isScanning = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted { isScanning = true }
+                    else { showCameraDeniedAlert = true }
+                }
+            }
+        case .denied, .restricted:
+            showCameraDeniedAlert = true
+        @unknown default:
+            isScanning = true
+        }
+    }
+
+    private func handleQRResult(_ json: String) {
+        guard let data = json.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+              let url = dict["url"],
+              let token = dict["token"] else {
+            testResult = "QR code not recognized"
+            testSuccess = false
+            return
+        }
+        serverURL = url
+        authToken = token
+        _ = KeychainService.save(key: "authToken", value: token)
+        testResult = "Credentials loaded from QR"
+        testSuccess = true
     }
 }

@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 import WatchKit
 
@@ -22,8 +23,12 @@ struct WatchTerminalView: View {
             }
         }
         .ignoresSafeArea()
-        .onAppear { bridge.startAutoRefresh() }
-        .onDisappear { bridge.stopAutoRefresh() }
+        .background(
+            VideoPlayer(player: nil)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .opacity(0)
+        )
         .sheet(isPresented: $showTextInput) {
             WatchTextInputView(bridge: bridge)
         }
@@ -48,19 +53,31 @@ private struct WatchTerminalContent: View {
                 Spacer()
             }
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(bridge.renderedLines.enumerated()), id: \.offset) { _, line in
-                        Text(line)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(bridge.renderedLines.enumerated()), id: \.offset) { index, line in
+                            Text(line)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .id(index)
+                        }
+                        Color.clear
+                            .frame(height: 1)
+                            .id("bottom")
                     }
+                    .padding(.top, 14)
+                    .padding(.horizontal, 2)
+                    .padding(.bottom, 40)
                 }
-                .padding(.top, 14)
-                .padding(.horizontal, 2)
-                .padding(.bottom, 40)
+                .defaultScrollAnchor(.bottom)
+                .ignoresSafeArea()
+                .onAppear {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
+                .onChange(of: bridge.renderedLines.count) {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
             }
-            .defaultScrollAnchor(.bottom)
-            .ignoresSafeArea()
         }
     }
 }
@@ -71,39 +88,48 @@ private struct WatchStatusOverlay: View {
     let bridge: PhoneBridge
 
     var body: some View {
-        HStack(spacing: 3) {
-            Circle()
-                .fill(bridge.isConnected ? .green : .red)
-                .frame(width: 4, height: 4)
-                .accessibilityLabel(bridge.isConnected ? "Connected" : "Disconnected")
-
-            if !bridge.sessionLabel.isEmpty {
-                Text(bridge.sessionLabel)
+        ZStack {
+            TimelineView(.everyMinute) { context in
+                Text(context.date, format: .dateTime.hour().minute())
                     .font(.system(size: 8, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.green.opacity(0.7))
+                    .foregroundStyle(.white.opacity(0.5))
                     .lineLimit(1)
             }
 
-            Spacer()
+            HStack(spacing: 3) {
+                Circle()
+                    .fill(bridge.isConnected ? .green : .red)
+                    .frame(width: 4, height: 4)
+                    .accessibilityLabel(bridge.isConnected ? "Connected" : "Disconnected")
 
-            if let lastUpdate = bridge.lastUpdate {
-                Text(lastUpdate, style: .relative)
-                    .font(.system(size: 7, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.35))
-                    .lineLimit(1)
-            }
+                if !bridge.sessionLabel.isEmpty {
+                    Text(bridge.sessionLabel)
+                        .font(.system(size: 8, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.green.opacity(0.7))
+                        .lineLimit(1)
+                }
 
-            Button {
-                bridge.requestRefresh()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.4))
+                Spacer()
+
+                if let lastUpdate = bridge.lastUpdate {
+                    Text(lastUpdate, style: .relative)
+                        .font(.system(size: 7, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.35))
+                        .lineLimit(1)
+                }
+
+                Button {
+                    bridge.requestRefresh()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.4))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Refresh")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Refresh")
         }
-        .padding(.horizontal, 2)
+        .padding(.horizontal, 10)
         .padding(.top, 1)
         .background(
             LinearGradient(
@@ -151,6 +177,8 @@ private struct WatchInputToolbar: View {
     @Binding var showTextInput: Bool
     @State private var holdingKey: String?
     @State private var holdTimer: Timer?
+    @State private var holdStartTime: Date?
+    private let holdMaxDuration: TimeInterval = 30
 
     var body: some View {
         VStack(spacing: 0) {
@@ -204,6 +232,7 @@ private struct WatchInputToolbar: View {
             )
         )
         .animation(.easeInOut(duration: 0.2), value: bridge.sendStatus)
+        .onDisappear { stopHold() }
     }
 
     @ViewBuilder
@@ -234,9 +263,16 @@ private struct WatchInputToolbar: View {
             // Start holding
             stopHold()
             holdingKey = key.id
+            holdStartTime = Date()
             WKInterfaceDevice.current().play(.success)
             holdTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { _ in
                 Task { @MainActor in
+                    // Auto-cancel after 30s to prevent runaway timer
+                    if let start = holdStartTime, Date().timeIntervalSince(start) > holdMaxDuration {
+                        stopHold()
+                        WKInterfaceDevice.current().play(.failure)
+                        return
+                    }
                     bridge.sendKeys(special: key.special)
                 }
             }
@@ -247,6 +283,7 @@ private struct WatchInputToolbar: View {
         holdTimer?.invalidate()
         holdTimer = nil
         holdingKey = nil
+        holdStartTime = nil
     }
 }
 

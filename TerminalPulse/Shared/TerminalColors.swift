@@ -74,7 +74,7 @@ enum TerminalColors {
         brCyan: Color(red: 0.45, green: 1.0, blue: 1.0),
         brWhite: .white,
         foreground: Color(red: 0.85, green: 0.85, blue: 0.85),
-        background: Color(red: 0.05, green: 0.05, blue: 0.07)
+        background: .black
     )
 
     static let solarizedTheme = TerminalTheme(

@@ -8,6 +8,7 @@ final class WatchBridge: NSObject, WCSessionDelegate {
     private var session: WCSession?
     var onRefreshRequested: (() -> Void)?
     var onSendKeysRequested: ((_ text: String?, _ special: String?, _ paneId: String?, _ reply: @escaping (Bool, String?) -> Void) -> Void)?
+    private var syncSettingsTask: Task<Void, Never>?
 
     override init() {
         super.init()
@@ -21,8 +22,11 @@ final class WatchBridge: NSObject, WCSessionDelegate {
     func send(payload: WatchPayload, commandFinished: Bool = false) {
         guard let session, session.activationState == .activated else { return }
 
+        let fontSize = UserDefaults.standard.integer(forKey: "watchFontSize")
+        let maxChars = Self.watchCharactersPerLine(fontSize: fontSize > 0 ? fontSize : 10)
+
         // Collapse tmux border lines that would wrap on the narrow watch screen
-        let optimizedRuns = Self.collapseBorderLines(in: payload.runs)
+        let optimizedRuns = Self.collapseBorderLines(in: payload.runs, maxWidth: maxChars)
         let optimized = WatchPayload(
             host: payload.host, ts: payload.ts,
             session: payload.session, winIndex: payload.winIndex,
@@ -31,23 +35,26 @@ final class WatchBridge: NSObject, WCSessionDelegate {
         )
 
         guard var dict = optimized.toDictionary() else { return }
-
         if commandFinished {
             dict["commandFinished"] = true
         }
-
         injectSettings(into: &dict)
         transmit(dict, via: session)
     }
 
-    /// Push current settings to the watch immediately without requiring a content change.
-    /// The watch will re-render its cached output with the new settings.
+    /// Push current settings to the watch after a brief debounce.
+    /// Prevents WCSession rate-limit flooding when sliders are dragged.
     func syncSettings() {
-        guard let session, session.activationState == .activated else { return }
+        syncSettingsTask?.cancel()
+        syncSettingsTask = Task {
+            try? await Task.sleep(for: .seconds(0.3))
+            guard !Task.isCancelled else { return }
+            guard let session, session.activationState == .activated else { return }
 
-        var dict: [String: Any] = ["_settingsOnly": true]
-        injectSettings(into: &dict)
-        transmit(dict, via: session)
+            var dict: [String: Any] = ["_settingsOnly": true]
+            injectSettings(into: &dict)
+            transmit(dict, via: session)
+        }
     }
 
     /// Push pro status to the watch immediately after purchase.
@@ -99,6 +106,15 @@ final class WatchBridge: NSObject, WCSessionDelegate {
         }
         return s
     }()
+
+    /// How many monospaced characters fit on the watch screen at a given font size.
+    /// Watch usable width ≈ 194pt (screen minus horizontal padding).
+    /// SF Mono advance ≈ fontSize × 0.78 (empirically: 24 at size 10, 35 at size 7).
+    private static func watchCharactersPerLine(fontSize: Int) -> Int {
+        let usableWidth: Double = 194
+        let charWidth = Double(max(fontSize, 7)) * 0.78
+        return Int(usableWidth / charWidth)
+    }
 
     /// Detect lines that are predominantly horizontal border characters and replace
     /// them with a short divider that won't wrap on the watch screen.

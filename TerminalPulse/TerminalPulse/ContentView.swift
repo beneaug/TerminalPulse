@@ -32,6 +32,9 @@ struct ContentView: View {
                     onAppearanceChanged: {
                         polling.rerender()
                         polling.syncSettingsToWatch()
+                    },
+                    onDemoLoaded: {
+                        polling.startDemoAnimation()
                     }
                 )
             }
@@ -41,7 +44,7 @@ struct ContentView: View {
         }
         .onAppear {
             polling.watchBridge = watchBridge
-            watchBridge.onRefreshRequested = { polling.fetchNow() }
+            watchBridge.onRefreshRequested = { polling.fetchForWatch() }
             watchBridge.onSendKeysRequested = { text, special, paneId, reply in
                 let target = paneId ?? polling.selectedTarget
                 Task {
@@ -62,11 +65,11 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .background:
+            case .background, .inactive:
                 polling.enterBackground()
             case .active:
                 polling.enterForeground()
-            default:
+            @unknown default:
                 break
             }
         }

@@ -119,6 +119,23 @@ struct OnboardingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
             .padding(.horizontal, 24)
+
+            Button {
+                activateDemo()
+            } label: {
+                Text("Try Demo")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.green)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.green.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                    )
+            }
+            .padding(.horizontal, 24)
         }
     }
 
@@ -394,6 +411,13 @@ struct OnboardingView: View {
         }
         UserDefaults.standard.set(true, forKey: "onboardingComplete")
         NotificationService.requestPermission()
+        withAnimation { isComplete = true }
+    }
+
+    private func activateDemo() {
+        DemoData.activate()
+        UserDefaults.standard.set("http://127.0.0.1:8787", forKey: "serverURL")
+        UserDefaults.standard.set(true, forKey: "onboardingComplete")
         withAnimation { isComplete = true }
     }
 }

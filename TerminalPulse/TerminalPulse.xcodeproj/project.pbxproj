@@ -36,6 +36,8 @@
 		AA000000000000000000001A /* TerminalPulseWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* TerminalPulseWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AA0000000000000000000030 /* StoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000053 /* StoreManager.swift */; };
 		AA0000000000000000000031 /* StoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000053 /* StoreManager.swift */; };
+		AA0000000000000000000032 /* DemoData.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000055 /* DemoData.swift */; };
+		AA0000000000000000000033 /* DemoData.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000055 /* DemoData.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -76,6 +78,7 @@
 		AA00000000000000000000F2 /* WatchConnectivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = System/Library/Frameworks/WatchConnectivity.framework; sourceTree = SDKROOT; };
 		AA0000000000000000000053 /* StoreManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreManager.swift; sourceTree = "<group>"; };
 		AA0000000000000000000054 /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
+		AA0000000000000000000055 /* DemoData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoData.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -118,6 +121,7 @@
 				AA0000000000000000000051 /* TerminalColors.swift */,
 				AA0000000000000000000052 /* RunsRenderer.swift */,
 				AA0000000000000000000053 /* StoreManager.swift */,
+				AA0000000000000000000055 /* DemoData.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -316,6 +320,7 @@
 				AA0000000000000000000020 /* KeychainService.swift in Sources */,
 				AA0000000000000000000022 /* OnboardingView.swift in Sources */,
 				AA0000000000000000000030 /* StoreManager.swift in Sources */,
+				AA0000000000000000000032 /* DemoData.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -330,6 +335,7 @@
 				AA0000000000000000000015 /* WatchTerminalView.swift in Sources */,
 				AA0000000000000000000017 /* PhoneBridge.swift in Sources */,
 				AA0000000000000000000031 /* StoreManager.swift in Sources */,
+				AA0000000000000000000033 /* DemoData.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
