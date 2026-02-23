@@ -10,8 +10,13 @@ struct TerminalPulseWatchApp: App {
             WatchTerminalView(bridge: bridge)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                bridge.requestRefresh()
+            switch phase {
+            case .active:
+                bridge.startAutoRefresh()
+            case .inactive, .background:
+                bridge.stopAutoRefresh()
+            @unknown default:
+                break
             }
         }
     }

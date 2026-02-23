@@ -24,6 +24,7 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
 
     private var session: WCSession?
     private var currentHash = ""
+    private var refreshTimer: Timer?
     private var wasDisconnected = false
     private var statusClearTask: Task<Void, Never>?
     private static let isoFormatter = ISO8601DateFormatter()
@@ -86,6 +87,26 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
         })
     }
 
+    /// Start periodic refresh requests while the watch app is visible.
+    /// Uses the iPhone's synced poll interval, with a minimum of 2 seconds.
+    func startAutoRefresh() {
+        stopAutoRefresh()
+        let syncedInterval = UserDefaults.standard.integer(forKey: "pollInterval")
+        let interval = TimeInterval(max(syncedInterval, 2))
+        requestRefresh()
+        let t = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in self.requestRefresh() }
+        }
+        t.tolerance = interval * 0.1 // Let watchOS coalesce timer wakes
+        refreshTimer = t
+    }
+
+    func stopAutoRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
     private func clearStatusAfterDelay() {
         statusClearTask?.cancel()
         statusClearTask = Task {
@@ -120,7 +141,12 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
             }
         }
         if let syncedPollInterval = dict["_pollInterval"] as? Int, syncedPollInterval > 0 {
+            let current = UserDefaults.standard.integer(forKey: "pollInterval")
             UserDefaults.standard.set(syncedPollInterval, forKey: "pollInterval")
+            // Restart timer if interval changed and timer is running
+            if syncedPollInterval != current, refreshTimer != nil {
+                startAutoRefresh()
+            }
         }
 
         // Settings-only message — re-render cached output with new settings
@@ -209,11 +235,13 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         Task { @MainActor in
             if session.isReachable {
-                // Phone became reachable — one-shot refresh to get fresh data
-                self.requestRefresh()
+                // Phone became reachable — restart refresh to get fresh data flowing
+                self.startAutoRefresh()
                 self.isConnected = true
                 self.wasDisconnected = false
             } else {
+                // Phone unreachable — keep timer running (lightweight, fails silently).
+                // Stopping it here caused permanent polling death since nothing restarted it.
                 self.wasDisconnected = true
                 self.isConnected = false
             }
