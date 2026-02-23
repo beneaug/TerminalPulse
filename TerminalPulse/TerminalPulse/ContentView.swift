@@ -18,7 +18,7 @@ struct ContentView: View {
         TabView {
             NavigationStack {
                 TerminalView(polling: polling)
-                    .navigationTitle("TerminalPulse")
+                    .navigationTitle("tmuxonwatch")
                     .navigationBarTitleDisplayMode(.inline)
             }
             .tabItem {
