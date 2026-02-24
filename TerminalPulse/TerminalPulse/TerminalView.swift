@@ -112,6 +112,7 @@ private struct TerminalErrorBanner: View {
                 .padding(.vertical, 4)
                 .frame(maxWidth: .infinity)
                 .background(.red.opacity(0.1))
+                .accessibilityLabel("Error: \(error)")
         }
     }
 }

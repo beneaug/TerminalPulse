@@ -15,6 +15,8 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>TerminalPulse uses the camera to scan QR codes during server setup.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>tmuxonwatch connects to your tmux server on your local network to display terminal output.</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

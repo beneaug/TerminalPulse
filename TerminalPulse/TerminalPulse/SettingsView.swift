@@ -35,6 +35,7 @@ struct SettingsView: View {
                         .textContentType(.URL)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                        .accessibilityLabel("Server URL")
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -43,6 +44,7 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                     SecureField("Token", text: $authToken)
                         .font(.system(size: 14, design: .monospaced))
+                        .accessibilityLabel("Authentication token")
                         .onChange(of: authToken) {
                             _ = KeychainService.save(key: "authToken", value: authToken)
                         }
@@ -65,6 +67,7 @@ struct SettingsView: View {
                     Text(result)
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(testSuccess ? .green : .red)
+                        .accessibilityLabel("Connection test result: \(result)")
                 }
 
                 Button {
@@ -206,6 +209,22 @@ struct SettingsView: View {
                 Text("Demo")
             } footer: {
                 Text("Load sample data for testing without a server.")
+            }
+
+            Section {
+                HStack {
+                    Text("Version")
+                    Spacer()
+                    Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"))")
+                        .foregroundStyle(.secondary)
+                        .font(.system(size: 14, design: .monospaced))
+                }
+
+                Link("Privacy Policy", destination: URL(string: "https://tmuxonwatch.com/privacy")!)
+                Link("Terms of Service", destination: URL(string: "https://tmuxonwatch.com/terms")!)
+                Link("Support", destination: URL(string: "https://tmuxonwatch.com/support")!)
+            } header: {
+                Text("About")
             }
         }
         .navigationTitle("Settings")

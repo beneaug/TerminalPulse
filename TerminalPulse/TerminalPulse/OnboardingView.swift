@@ -20,6 +20,8 @@ struct OnboardingView: View {
                     }
                 }
                 .padding(.top, 20)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Step \(currentStep + 1) of 3")
 
                 Spacer()
 
@@ -91,6 +93,7 @@ struct OnboardingView: View {
                         .font(.system(size: 14))
                         .foregroundStyle(.white.opacity(0.5))
                 }
+                .accessibilityLabel("Copy install command")
             }
             .padding(16)
             .background(Color.white.opacity(0.05))
@@ -231,6 +234,7 @@ struct OnboardingView: View {
                             RoundedRectangle(cornerRadius: 6)
                                 .stroke(Color.white.opacity(0.1), lineWidth: 1)
                         )
+                        .accessibilityLabel("Server URL")
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -247,6 +251,7 @@ struct OnboardingView: View {
                             RoundedRectangle(cornerRadius: 6)
                                 .stroke(Color.white.opacity(0.1), lineWidth: 1)
                         )
+                        .accessibilityLabel("Authentication token")
                 }
             }
             .padding(.horizontal, 24)
@@ -286,6 +291,7 @@ struct OnboardingView: View {
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(.red)
                     .padding(.horizontal, 24)
+                    .accessibilityLabel("Connection error: \(msg)")
             }
         }
     }
