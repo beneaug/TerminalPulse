@@ -394,7 +394,17 @@ struct OnboardingView: View {
 
         Task {
             do {
-                _ = try await APIClient().fetchHealth()
+                let api = APIClient()
+                _ = try await api.fetchHealth()
+                do {
+                    _ = try await api.fetchSessions()
+                } catch let apiError as APIError {
+                    if apiError.statusCode == 401 {
+                        throw apiError
+                    }
+                    // Non-auth API failures (for example no tmux sessions yet) still
+                    // prove token acceptance by the server.
+                }
                 connectionStatus = .success
                 try? await Task.sleep(for: .milliseconds(800))
                 withAnimation { currentStep = 2 }

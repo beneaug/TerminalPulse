@@ -284,8 +284,19 @@ struct SettingsView: View {
         testResult = nil
         Task {
             do {
-                let health = try await APIClient().fetchHealth()
-                testResult = "\(health.hostname) — tmux: \(health.tmux ? "yes" : "no")"
+                let api = APIClient()
+                let health = try await api.fetchHealth()
+                var authLabel = "auth: ok"
+                do {
+                    _ = try await api.fetchSessions()
+                } catch let apiError as APIError {
+                    if apiError.statusCode == 401 {
+                        throw apiError
+                    }
+                    // Non-auth API failures still indicate the token passed auth.
+                    authLabel = "auth: ok (tmux unavailable)"
+                }
+                testResult = "\(health.hostname) — tmux: \(health.tmux ? "yes" : "no") — \(authLabel)"
                 testSuccess = true
             } catch {
                 testResult = error.localizedDescription

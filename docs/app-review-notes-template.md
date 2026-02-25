@@ -8,8 +8,9 @@ tmuxonwatch is a companion viewer for tmux output from a self-hosted server runn
 
 How to test without external setup:
 
-1. Open app -> Settings -> Demo -> `Load Demo Data`
-2. The app displays sample terminal content and watch UI behavior without requiring a server.
+1. Launch app
+2. On onboarding step 1, tap `Try Demo`
+3. The app displays sample terminal content and watch UI behavior without requiring a server.
 
 How to test full live mode (optional):
 
@@ -23,6 +24,8 @@ In-App Purchase details:
 - Type: Non-consumable (one-time unlock)
 - Unlocks watch input actions (send keys / session switching from watch)
 - Free features remain available without purchase (viewing terminal output, notifications, themes, polling settings)
+
+The iPhone app has standalone functionality as a live terminal viewer/configuration app; Apple Watch is a companion display/input surface.
 
 No account/login is required.
 No third-party ad SDKs or tracking SDKs are used.
