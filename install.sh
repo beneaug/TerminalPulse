@@ -3,7 +3,7 @@ set -euo pipefail
 
 # tmuxonwatch Server Installer
 # Usage: bash install.sh
-# Or:    bash <(curl -sSL tmuxonwatch.com/install)
+# Or:    bash <(curl -sSL https://tmuxonwatch.com/install)
 #
 # Idempotent — safe to run multiple times.
 # Preserves existing auth tokens and configurations.
@@ -285,6 +285,17 @@ if [[ "$SERVER_STARTED" == "false" ]]; then
     warn "Check logs: /tmp/tmuxonwatch.err.log"
     if [[ ! -f "$INSTALL_DIR/main.py" ]]; then
         warn "Server files not found at $INSTALL_DIR — copy main.py, tmux_bridge.py, ansi_parser.py there first."
+    fi
+fi
+
+# Verify that the expected API surface is available (helps catch stale local files
+# when network download falls back to existing copies).
+if [[ "$SERVER_STARTED" == "true" ]]; then
+    if curl -sf -H "Authorization: Bearer $TP_TOKEN" "http://127.0.0.1:$PORT/windows" > /dev/null 2>&1; then
+        ok "Server API check passed (/windows available)"
+    else
+        warn "Server API check failed: /windows endpoint unavailable."
+        warn "Your local server files may be outdated; rerun installer with network access."
     fi
 fi
 

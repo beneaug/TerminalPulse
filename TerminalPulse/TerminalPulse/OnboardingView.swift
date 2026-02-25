@@ -80,14 +80,14 @@ struct OnboardingView: View {
                 .foregroundStyle(.white.opacity(0.6))
 
             HStack {
-                Text("bash <(curl -sSL tmuxonwatch.com/install)")
+                Text("bash <(curl -sSL https://tmuxonwatch.com/install)")
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(.green)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
 
                 Button {
-                    UIPasteboard.general.string = "bash <(curl -sSL tmuxonwatch.com/install)"
+                    UIPasteboard.general.string = "bash <(curl -sSL https://tmuxonwatch.com/install)"
                 } label: {
                     Image(systemName: "doc.on.doc")
                         .font(.system(size: 14))

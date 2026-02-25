@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import SwiftUI
 import BackgroundTasks
+import OSLog
 
 @Observable
 @MainActor
@@ -23,6 +24,14 @@ final class PollingService {
     private var lastDemoWatchSend: Date = .distantPast
     private var watchNeedsSync = true // Always send first successful poll to watch
     var watchBridge: WatchBridge?
+    private var currentPaneSession: String?
+    private var currentPaneWindowIndex: Int?
+    private var preferredWindowBaseBySession: [String: Int] = [:] // 0 or 1
+    private var isPolling = false
+    private var pendingPoll = false
+    private var pollCompletionWaiters: [CheckedContinuation<Void, Never>] = []
+    private var watchInputSyncTask: Task<Void, Never>?
+    private var activeBackgroundPollTask: UIBackgroundTaskIdentifier = .invalid
 
     // Adaptive polling state
     private var consecutiveUnchanged = 0
@@ -32,6 +41,9 @@ final class PollingService {
 
     static let bgRefreshID = "com.augustbenedikt.TerminalPulse.refresh"
     static var backgroundRefreshHandler: ((BGAppRefreshTask) -> Void)?
+    private static let allowedTargetScalars = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_:.-%")
+    private static let preferredWindowBaseDefaultsKey = "preferredWindowBaseBySession"
+    private let logger = Logger(subsystem: "com.augustbenedikt.TerminalPulse", category: "PollingService")
 
     var pollInterval: TimeInterval {
         Double(UserDefaults.standard.integer(forKey: "pollInterval").clamped(to: 1...120, default: 2))
@@ -47,17 +59,17 @@ final class PollingService {
             // Error backoff: base * 2^min(errors, 6), capped at 120s
             let exponent = min(consecutiveErrors, 6)
             interval = min(base * pow(2.0, Double(exponent)), 120)
-        } else if consecutiveUnchanged > 2 {
-            // Idle backoff: base * 2^min(unchanged-2, 2), capped at 10s
-            let exponent = min(consecutiveUnchanged - 2, 2)
-            interval = min(base * pow(2.0, Double(exponent)), 10)
+        } else if consecutiveUnchanged > 6 {
+            // Idle backoff: starts after sustained unchanged output, capped at 20s.
+            let exponent = min(consecutiveUnchanged - 6, 4)
+            interval = min(base * pow(2.0, Double(exponent)), 20)
         } else {
             interval = base
         }
 
         // Low Power Mode floors
         if isLowPower {
-            let floor: TimeInterval = consecutiveUnchanged > 2 ? 30 : 5
+            let floor: TimeInterval = consecutiveUnchanged > 6 ? 30 : 5
             interval = max(interval, floor)
         }
 
@@ -65,6 +77,7 @@ final class PollingService {
     }
 
     func start() {
+        loadPreferredWindowBases()
         if DemoData.isDemo {
             startDemoAnimation()
         } else if let cached = CaptureCache.load() {
@@ -80,6 +93,9 @@ final class PollingService {
     func stop() {
         timer?.invalidate()
         timer = nil
+        watchInputSyncTask?.cancel()
+        watchInputSyncTask = nil
+        endBackgroundPollTaskIfNeeded()
         if let powerStateObserver {
             NotificationCenter.default.removeObserver(powerStateObserver)
             self.powerStateObserver = nil
@@ -89,7 +105,7 @@ final class PollingService {
     func fetchNow() {
         consecutiveUnchanged = 0
         consecutiveErrors = 0
-        Task { await poll() }
+        requestPoll()
     }
 
     /// Watch requested a refresh — force-send result even if hash unchanged.
@@ -97,13 +113,26 @@ final class PollingService {
         watchNeedsSync = true
         consecutiveUnchanged = 0
         consecutiveErrors = 0
-        Task { await poll() }
+        requestPoll()
     }
 
     func fetchAndWait() async {
         consecutiveUnchanged = 0
         consecutiveErrors = 0
-        await poll()
+        await requestPollAndWait()
+    }
+
+    /// Coalesce bursty watch key events into a single near-immediate follow-up poll.
+    func scheduleWatchInputFollowUp() {
+        watchInputSyncTask?.cancel()
+        watchInputSyncTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled, !isInBackground else { return }
+            watchNeedsSync = true
+            consecutiveUnchanged = 0
+            consecutiveErrors = 0
+            requestPoll()
+        }
     }
 
     /// Call when the app moves to background — stop timer entirely to save battery.
@@ -111,6 +140,8 @@ final class PollingService {
         isInBackground = true
         timer?.invalidate()
         timer = nil
+        watchInputSyncTask?.cancel()
+        watchInputSyncTask = nil
         stopDemoAnimation()
         scheduleBackgroundRefresh()
     }
@@ -118,6 +149,7 @@ final class PollingService {
     /// Call when the app returns to foreground.
     func enterForeground() {
         isInBackground = false
+        endBackgroundPollTaskIfNeeded()
         consecutiveUnchanged = 0
         consecutiveErrors = 0
         watchNeedsSync = true // Watch may have stale data while we were in background
@@ -141,7 +173,7 @@ final class PollingService {
         }
         task.expirationHandler = { task.setTaskCompleted(success: false) }
         Task {
-            await poll()
+            await requestPollAndWait()
             task.setTaskCompleted(success: true)
         }
     }
@@ -152,11 +184,11 @@ final class PollingService {
         let interval = effectiveInterval
         let t = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             guard let self else { return }
-            Task { @MainActor in await self.poll() }
+            Task { @MainActor in self.requestPoll() }
         }
         t.tolerance = interval * 0.1 // Let iOS coalesce timer wakes
         timer = t
-        Task { await poll() }
+        requestPoll()
     }
 
     func restartTimer() {
@@ -174,7 +206,7 @@ final class PollingService {
         self.timer?.invalidate()
         let t = Timer.scheduledTimer(withTimeInterval: newInterval, repeats: true) { [weak self] _ in
             guard let self else { return }
-            Task { @MainActor in await self.poll() }
+            Task { @MainActor in self.requestPoll() }
         }
         t.tolerance = newInterval * 0.1
         self.timer = t
@@ -201,16 +233,332 @@ final class PollingService {
     }
 
     func selectTarget(_ target: String?) {
-        selectedTarget = target
+        selectedTarget = sanitizedTarget(target)
         lastHash = "" // Force re-render on switch
         consecutiveUnchanged = 0
         consecutiveErrors = 0
         fetchNow()
     }
 
+    /// Cycle to the next/previous tmux session and fetch immediately.
+    func switchSession(direction rawDirection: Int) async -> (Bool, String?) {
+        let direction = rawDirection >= 0 ? 1 : -1
+        do {
+            // Always refresh on explicit switch so we do not rely on stale counts.
+            sessions = try await api.fetchSessions().sessions
+        } catch {
+            if sessions.isEmpty {
+                return (false, error.localizedDescription)
+            }
+            logger.notice("Using cached sessions after refresh failure: \(error.localizedDescription, privacy: .public)")
+        }
+
+        let available = sessions.map(\.name)
+        guard !available.isEmpty else { return (false, "No tmux sessions found") }
+
+        // Prefer the live pane session over selectedTarget so first swipe from default
+        // always advances/descends relative to what the user is currently seeing.
+        let activeSession = currentPaneSession ?? Self.sessionName(fromTarget: selectedTarget) ?? selectedTarget
+
+        if available.count > 1 {
+            let nextTarget: String
+            if let activeSession, let currentIndex = available.firstIndex(of: activeSession) {
+                let wrapped = (currentIndex + direction + available.count) % available.count
+                nextTarget = available[wrapped]
+            } else {
+                nextTarget = direction > 0 ? available[0] : available[available.count - 1]
+            }
+
+            selectedTarget = nextTarget
+            await forceSwitchPoll()
+
+            if !isConnected {
+                return (false, errorMessage ?? "Unable to refresh capture")
+            }
+            if let currentPaneSession, currentPaneSession != nextTarget {
+                return (false, "Session did not change")
+            }
+            return (true, nil)
+        }
+
+        // Single-session mode: switch windows authoritatively on the server.
+        let sessionName = activeSession ?? available[0]
+        let sessionInfo = sessions.first(where: { $0.name == sessionName }) ?? sessions.first
+        let sessionWindowCount = max(sessionInfo?.windows ?? 1, 1)
+
+        do {
+            let previousWindow = currentPaneWindowIndex
+            let response = try await api.switchWindow(direction: direction, target: sessionName)
+            if let pane = response.pane {
+                currentPaneSession = pane.session
+                currentPaneWindowIndex = pane.winIndex
+                // Keep capture scoped to the session so follow-up polls track the active window.
+                selectedTarget = pane.session
+            } else {
+                selectedTarget = sessionName
+            }
+
+            await forceSwitchPoll()
+
+            if !isConnected {
+                return (false, errorMessage ?? "Unable to refresh capture")
+            }
+            if let previousWindow, currentPaneWindowIndex == previousWindow {
+                return (false, "Window did not change")
+            }
+            return (true, nil)
+        } catch let apiError as APIError where apiError.statusCode == 404 {
+            logger.notice("Server missing /switch-window endpoint; using legacy window probing fallback")
+            guard sessionWindowCount > 1 else {
+                return (false, "Only 1 tmux window")
+            }
+            return await legacySwitchWindowByTargetProbe(
+                sessionName: sessionName,
+                direction: direction,
+                windowCount: sessionWindowCount
+            )
+        } catch {
+            return (false, userFacingSwitchError(error.localizedDescription))
+        }
+    }
+
+    private func userFacingSwitchError(_ message: String) -> String {
+        let lower = message.lowercased()
+        if lower.contains("no additional tmux windows")
+            || lower.contains("no additional tmux sessions or windows")
+            || lower.contains("no tmux sessions or windows") {
+            return "Only 1 tmux window"
+        }
+        if lower.contains("can't find window") {
+            return "tmux window not found"
+        }
+        if lower.contains("status 400") && lower.contains("direction must be non-zero") {
+            return "Invalid swipe direction"
+        }
+        return message
+    }
+
+    private func forceSwitchPoll() async {
+        lastHash = ""
+        watchNeedsSync = true
+        consecutiveUnchanged = 0
+        consecutiveErrors = 0
+        await requestPollAndWait()
+    }
+
+    private func wrapped(_ value: Int, count: Int) -> Int {
+        guard count > 0 else { return 0 }
+        let mod = value % count
+        return mod >= 0 ? mod : mod + count
+    }
+
+    private static func windowIndex(fromTarget target: String?) -> Int? {
+        guard let target, let separator = target.lastIndex(of: ":") else { return nil }
+        let suffix = target[target.index(after: separator)...]
+        return Int(suffix)
+    }
+
+    private static func sessionName(fromTarget target: String?) -> String? {
+        guard let target else { return nil }
+        guard let separator = target.firstIndex(of: ":") else { return target }
+        return String(target[..<separator])
+    }
+
+    private func legacySwitchWindowByTargetProbe(
+        sessionName: String,
+        direction: Int,
+        windowCount: Int
+    ) async -> (Bool, String?) {
+        let previousTarget = selectedTarget
+        var previousWindow = currentPaneWindowIndex
+        if previousWindow == nil {
+            selectedTarget = sessionName
+            await forceSwitchPoll()
+            if !isConnected {
+                selectedTarget = previousTarget
+                return (false, userFacingSwitchError(errorMessage ?? "Unable to refresh capture"))
+            }
+            previousWindow = currentPaneWindowIndex
+        }
+        var lastObservedError: String?
+
+        let candidates = windowCandidates(
+            current: previousWindow ?? Self.windowIndex(fromTarget: selectedTarget),
+            count: windowCount,
+            direction: direction,
+            preferredBase: preferredWindowBaseBySession[sessionName]
+        )
+
+        for candidateIndex in candidates {
+            let candidateTarget = "\(sessionName):\(candidateIndex)"
+            selectedTarget = candidateTarget
+            await forceSwitchPoll()
+
+            if !isConnected {
+                lastObservedError = errorMessage
+                if let message = errorMessage?.lowercased(),
+                   message.contains("proxy")
+                    || message.contains("timed out")
+                    || message.contains("not connected")
+                    || message.contains("network") {
+                    break
+                }
+                continue
+            }
+            guard currentPaneSession == sessionName else { continue }
+            guard let observedWindow = currentPaneWindowIndex else { continue }
+
+            if let previousWindow {
+                guard observedWindow != previousWindow else { continue }
+            } else if observedWindow != candidateIndex {
+                continue
+            }
+
+            // Keep target on session scope so external tmux focus changes still propagate.
+            selectedTarget = sessionName
+            if observedWindow == 0 || previousWindow == 0 {
+                preferredWindowBaseBySession[sessionName] = 0
+            } else if observedWindow == windowCount || previousWindow == windowCount {
+                preferredWindowBaseBySession[sessionName] = 1
+            }
+            persistPreferredWindowBases()
+            logger.notice("Window switch resolved session=\(sessionName, privacy: .public) win=\(observedWindow, privacy: .public) base=\(self.preferredWindowBaseBySession[sessionName] ?? -1, privacy: .public)")
+            return (true, nil)
+        }
+
+        selectedTarget = previousTarget
+        return (false, lastObservedError ?? "Window did not change")
+    }
+
+    private func windowCandidates(current: Int?, count: Int, direction: Int, preferredBase: Int?) -> [Int] {
+        guard count > 1 else { return [] }
+        let direction = direction >= 0 ? 1 : -1
+        var result: [Int] = []
+
+        func append(_ value: Int?) {
+            guard let value else { return }
+            guard !result.contains(value) else { return }
+            if let current, value == current { return }
+            result.append(value)
+        }
+
+        if let current {
+            let zeroBased = wrapped(current + direction, count: count)
+            let oneBased = wrapped((current - 1) + direction, count: count) + 1
+
+            // Try both common tmux index bases first (remembering what worked before).
+            // If unknown, bias toward 1-based for positive indexes to avoid invalid :0 probes
+            // on common base-index-1 or sparse-window setups.
+            let preferOneBased: Bool
+            if let preferredBase {
+                preferOneBased = preferredBase == 1
+            } else if current == 0 {
+                preferOneBased = false
+            } else if current == count {
+                preferOneBased = true
+            } else {
+                preferOneBased = true
+            }
+
+            if preferOneBased {
+                append(oneBased)
+                append(zeroBased)
+            } else {
+                append(zeroBased)
+                append(oneBased)
+            }
+
+            // Then probe nearby indexes to handle sparse/non-standard layouts.
+            for step in 1..<count {
+                append(current + direction * step)
+            }
+        } else {
+            for idx in 1...count { append(idx) }
+            for idx in 0..<count { append(idx) }
+        }
+
+        return result
+    }
+
+    private func loadPreferredWindowBases() {
+        guard let data = UserDefaults.standard.data(forKey: Self.preferredWindowBaseDefaultsKey),
+              let map = try? JSONDecoder().decode([String: Int].self, from: data) else {
+            preferredWindowBaseBySession = [:]
+            return
+        }
+        preferredWindowBaseBySession = map
+    }
+
+    private func persistPreferredWindowBases() {
+        guard let data = try? JSONEncoder().encode(preferredWindowBaseBySession) else { return }
+        UserDefaults.standard.set(data, forKey: Self.preferredWindowBaseDefaultsKey)
+    }
+
+    private func requestPoll() {
+        if isPolling {
+            pendingPoll = true
+            return
+        }
+
+        isPolling = true
+        Task { @MainActor in
+            while true {
+                self.pendingPoll = false
+                self.beginBackgroundPollTaskIfNeeded()
+                await self.poll()
+                self.endBackgroundPollTaskIfNeeded()
+                guard self.pendingPoll else { break }
+            }
+            self.isPolling = false
+            self.resumePollWaiters()
+        }
+    }
+
+    private func requestPollAndWait() async {
+        await withCheckedContinuation { continuation in
+            pollCompletionWaiters.append(continuation)
+            requestPoll()
+        }
+    }
+
+    private func resumePollWaiters() {
+        guard !pollCompletionWaiters.isEmpty else { return }
+        let waiters = pollCompletionWaiters
+        pollCompletionWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+
+    private func beginBackgroundPollTaskIfNeeded() {
+        guard isInBackground else { return }
+        guard activeBackgroundPollTask == .invalid else { return }
+
+        let app = UIApplication.shared
+        activeBackgroundPollTask = app.beginBackgroundTask(withName: "WatchRefreshPoll") { [weak self] in
+            guard let self else { return }
+            if self.activeBackgroundPollTask != .invalid {
+                app.endBackgroundTask(self.activeBackgroundPollTask)
+                self.activeBackgroundPollTask = .invalid
+            }
+        }
+    }
+
+    private func endBackgroundPollTaskIfNeeded() {
+        guard activeBackgroundPollTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(activeBackgroundPollTask)
+        activeBackgroundPollTask = .invalid
+    }
+
     private func poll() async {
         do {
-            let capture = try await api.fetchCapture(target: selectedTarget)
+            let target = sanitizedTarget(selectedTarget)
+            if target != selectedTarget {
+                selectedTarget = target
+            }
+            let capture = try await api.fetchCapture(target: target)
+            currentPaneSession = capture.pane?.session
+            currentPaneWindowIndex = capture.pane?.winIndex
             isConnected = true
             errorMessage = nil
             consecutiveErrors = 0
@@ -306,6 +654,14 @@ final class PollingService {
             if !trimmed.isEmpty { return trimmed }
         }
         return ""
+    }
+
+    private func sanitizedTarget(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != "?" else { return nil }
+        let isValid = trimmed.unicodeScalars.allSatisfy { Self.allowedTargetScalars.contains($0) }
+        return isValid ? trimmed : nil
     }
 
     // MARK: - Power State
@@ -432,4 +788,3 @@ final class PollingService {
         return 0.08
     }
 }
-

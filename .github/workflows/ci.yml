@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  server:
+    name: Server Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile Python
+        run: python -m compileall server
+
+      - name: Run Unit Tests
+        run: python -m unittest discover -s server/tests -p "test_*.py" -v
+
+  apple:
+    name: Apple Builds
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build iOS App
+        run: |
+          xcodebuild \
+            -project TerminalPulse/TerminalPulse.xcodeproj \
+            -scheme TerminalPulse \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Build watchOS App
+        run: |
+          xcodebuild \
+            -project TerminalPulse/TerminalPulse.xcodeproj \
+            -scheme TerminalPulseWatch \
+            -destination 'generic/platform=watchOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build

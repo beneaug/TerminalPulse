@@ -38,6 +38,17 @@ struct SessionsResponse: Codable {
     let sessions: [SessionInfo]
 }
 
+struct WindowInfoResponse: Codable {
+    let session: String
+    let index: Int
+    let name: String
+    let active: Bool
+}
+
+struct WindowsResponse: Codable {
+    let windows: [WindowInfoResponse]
+}
+
 // MARK: - Terminal Run
 
 struct TerminalRun: Codable, Sendable {
@@ -71,6 +82,16 @@ struct SendKeysRequest: Codable {
 
 struct SendKeysResponse: Codable {
     let ok: Bool
+}
+
+struct SwitchWindowRequest: Codable {
+    var direction: Int
+    var target: String?
+}
+
+struct SwitchWindowResponse: Codable {
+    let ok: Bool
+    let pane: PaneInfo?
 }
 
 // MARK: - Watch Payload

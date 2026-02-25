@@ -14,7 +14,15 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, model_validator
 
 from ansi_parser import parse_lines
-from tmux_bridge import capture_pane, get_pane_info, has_tmux, list_sessions, send_keys
+from tmux_bridge import (
+    capture_pane,
+    get_pane_info,
+    has_tmux,
+    list_sessions,
+    list_windows,
+    send_keys,
+    switch_window,
+)
 
 app = FastAPI(title="TerminalPulse", version="1.0.0")
 _security = HTTPBearer()
@@ -100,6 +108,31 @@ async def sessions(_: str = Depends(_verify)):
     }
 
 
+@app.get("/windows")
+async def windows(
+    _: str = Depends(_verify),
+    session: str | None = Query(default=None),
+):
+    try:
+        windows_list = await list_windows(session=session)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return {
+        "windows": [
+            {
+                "session": w.session_name,
+                "index": w.window_index,
+                "name": w.window_name,
+                "active": w.active,
+            }
+            for w in windows_list
+        ]
+    }
+
+
 class SendKeysRequest(BaseModel):
     text: Optional[str] = None
     special: Optional[str] = None
@@ -109,6 +142,17 @@ class SendKeysRequest(BaseModel):
     def exactly_one(self):
         if (self.text is None) == (self.special is None):
             raise ValueError("Provide exactly one of text or special")
+        return self
+
+
+class SwitchWindowRequest(BaseModel):
+    direction: int = 1
+    target: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_direction(self):
+        if self.direction == 0:
+            raise ValueError("direction must be non-zero")
         return self
 
 
@@ -143,6 +187,29 @@ async def post_send_keys(
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     return {"ok": True}
+
+
+@app.post("/switch-window")
+async def post_switch_window(
+    body: SwitchWindowRequest,
+    _: str = Depends(_verify),
+):
+    try:
+        pane = await switch_window(direction=body.direction, target=body.target)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return {
+        "ok": True,
+        "pane": {
+            "session": pane.session_name,
+            "winIndex": pane.window_index,
+            "winName": pane.window_name,
+            "paneId": pane.pane_id,
+        },
+    }
 
 
 if __name__ == "__main__":

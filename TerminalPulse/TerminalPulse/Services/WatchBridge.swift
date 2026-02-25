@@ -8,7 +8,16 @@ final class WatchBridge: NSObject, WCSessionDelegate {
     private var session: WCSession?
     var onRefreshRequested: (() -> Void)?
     var onSendKeysRequested: ((_ text: String?, _ special: String?, _ paneId: String?, _ reply: @escaping (Bool, String?) -> Void) -> Void)?
+    var onSwitchSessionRequested: ((_ direction: Int, _ reply: @escaping (Bool, String?) -> Void) -> Void)? {
+        didSet { flushPendingSwitchIfNeeded() }
+    }
     private var syncSettingsTask: Task<Void, Never>?
+    private var sequence = 0
+    private let sequenceEpoch = UUID().uuidString
+    private var lastRefreshRequestAt: Date = .distantPast
+    private var lastSwitchRequestTs: TimeInterval = 0
+    private var pendingSwitchDirection: Int?
+    private var pendingSwitchTs: TimeInterval?
 
     override init() {
         super.init()
@@ -39,7 +48,8 @@ final class WatchBridge: NSObject, WCSessionDelegate {
             dict["commandFinished"] = true
         }
         injectSettings(into: &dict)
-        transmit(dict, via: session)
+        stampSequence(into: &dict)
+        transmit(dict, via: session, urgent: commandFinished)
     }
 
     /// Push current settings to the watch after a brief debounce.
@@ -53,6 +63,7 @@ final class WatchBridge: NSObject, WCSessionDelegate {
 
             var dict: [String: Any] = ["_settingsOnly": true]
             injectSettings(into: &dict)
+            stampSequence(into: &dict)
             transmit(dict, via: session)
         }
     }
@@ -62,6 +73,7 @@ final class WatchBridge: NSObject, WCSessionDelegate {
         guard let session, session.activationState == .activated else { return }
         var dict: [String: Any] = ["_settingsOnly": true]
         injectSettings(into: &dict)
+        stampSequence(into: &dict)
         transmit(dict, via: session)
     }
 
@@ -80,15 +92,26 @@ final class WatchBridge: NSObject, WCSessionDelegate {
         dict["_proUnlocked"] = StoreManager.shared.isProUnlocked
     }
 
-    private func transmit(_ dict: [String: Any], via session: WCSession) {
-        if session.isReachable {
-            let wcSession = session
-            session.sendMessage(dict, replyHandler: nil) { _ in
-                try? wcSession.updateApplicationContext(dict)
-            }
-        } else {
-            try? session.updateApplicationContext(dict)
+    private func transmit(_ dict: [String: Any], via session: WCSession, urgent: Bool = false) {
+        if urgent, session.isReachable {
+            session.sendMessage(dict, replyHandler: nil, errorHandler: nil)
         }
+        try? session.updateApplicationContext(dict)
+    }
+
+    private func nextSequence() -> Int {
+        if sequence == Int.max {
+            sequence = 1
+        } else {
+            sequence += 1
+        }
+        return sequence
+    }
+
+    private func stampSequence(into dict: inout [String: Any]) {
+        dict["_seqEpoch"] = sequenceEpoch
+        dict["_seq"] = nextSequence()
+        dict["_seqTs"] = Date().timeIntervalSince1970
     }
 
     // MARK: - Border line collapsing
@@ -164,7 +187,7 @@ final class WatchBridge: NSObject, WCSessionDelegate {
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         if message["action"] as? String == "refresh" {
             Task { @MainActor in
-                self.onRefreshRequested?()
+                self.triggerRefreshRequest()
             }
         }
     }
@@ -187,13 +210,90 @@ final class WatchBridge: NSObject, WCSessionDelegate {
                     }
                 }
             }
+        } else if message["action"] as? String == "switchSession" {
+            let direction = (message["direction"] as? Int ?? 1) >= 0 ? 1 : -1
+            Task { @MainActor in
+                guard let handler = self.onSwitchSessionRequested else {
+                    replyHandler(["ok": false, "error": "Not configured"])
+                    return
+                }
+                handler(direction) { ok, error in
+                    if ok {
+                        replyHandler(["ok": true])
+                    } else {
+                        replyHandler(["ok": false, "error": error ?? "Unknown error"])
+                    }
+                }
+            }
         } else if message["action"] as? String == "refresh" {
             Task { @MainActor in
-                self.onRefreshRequested?()
+                self.triggerRefreshRequest()
             }
             replyHandler(["ok": true])
         } else {
             replyHandler(["ok": false, "error": "Unknown action"])
         }
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String : Any]) {
+        let action = applicationContext["action"] as? String
+        if action == "refresh" {
+            Task { @MainActor in
+                self.triggerRefreshRequest()
+            }
+        } else if action == "switchSession" {
+            let direction = (applicationContext["direction"] as? Int ?? 1) >= 0 ? 1 : -1
+            let ts = applicationContext["ts"] as? TimeInterval
+            Task { @MainActor in
+                self.triggerSwitchRequest(direction: direction, ts: ts)
+            }
+        }
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String : Any]) {
+        let action = userInfo["action"] as? String
+        if action == "refresh" {
+            Task { @MainActor in
+                self.triggerRefreshRequest()
+            }
+        } else if action == "switchSession" {
+            let direction = (userInfo["direction"] as? Int ?? 1) >= 0 ? 1 : -1
+            let ts = userInfo["ts"] as? TimeInterval
+            Task { @MainActor in
+                self.triggerSwitchRequest(direction: direction, ts: ts)
+            }
+        }
+    }
+
+    private func triggerRefreshRequest() {
+        let now = Date()
+        guard now.timeIntervalSince(lastRefreshRequestAt) >= 0.8 else { return }
+        lastRefreshRequestAt = now
+        onRefreshRequested?()
+    }
+
+    private func triggerSwitchRequest(direction: Int, ts: TimeInterval?) {
+        let normalizedDirection = direction >= 0 ? 1 : -1
+        let requestTs = ts ?? Date().timeIntervalSince1970
+        guard requestTs > lastSwitchRequestTs else { return }
+        lastSwitchRequestTs = requestTs
+
+        guard let handler = onSwitchSessionRequested else {
+            pendingSwitchDirection = normalizedDirection
+            pendingSwitchTs = requestTs
+            return
+        }
+        handler(normalizedDirection) { _, _ in }
+    }
+
+    private func flushPendingSwitchIfNeeded() {
+        guard let handler = onSwitchSessionRequested else { return }
+        guard let direction = pendingSwitchDirection else { return }
+        let ts = pendingSwitchTs ?? Date().timeIntervalSince1970
+        pendingSwitchDirection = nil
+        pendingSwitchTs = nil
+        guard ts >= lastSwitchRequestTs else { return }
+        lastSwitchRequestTs = ts
+        handler(direction) { _, _ in }
     }
 }

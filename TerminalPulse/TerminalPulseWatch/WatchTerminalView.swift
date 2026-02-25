@@ -5,13 +5,16 @@ import WatchKit
 struct WatchTerminalView: View {
     @Bindable var bridge: PhoneBridge
     @State private var showTextInput = false
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
     var body: some View {
         ZStack(alignment: .top) {
             TerminalColors.defaultBackground
                 .ignoresSafeArea()
 
-            WatchTerminalContent(bridge: bridge)
+            WatchTerminalContent(bridge: bridge) { direction in
+                bridge.switchSession(direction: direction)
+            }
 
             WatchStatusOverlay(bridge: bridge)
 
@@ -32,6 +35,12 @@ struct WatchTerminalView: View {
         .sheet(isPresented: $showTextInput) {
             WatchTextInputView(bridge: bridge)
         }
+        .onAppear {
+            bridge.setLuminanceReduced(isLuminanceReduced)
+        }
+        .onChange(of: isLuminanceReduced) { _, reduced in
+            bridge.setLuminanceReduced(reduced)
+        }
     }
 }
 
@@ -39,8 +48,57 @@ struct WatchTerminalView: View {
 
 private struct WatchTerminalContent: View {
     let bridge: PhoneBridge
+    var onSessionSwipe: ((Int) -> Void)?
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+    @State private var contentID = UUID()
+    @State private var insertionEdge: Edge = .trailing
+    @State private var removalEdge: Edge = .leading
+    private let swipeMinDistance: CGFloat = 20
+    private let swipeAxisRatio: CGFloat = 1.15
 
     var body: some View {
+        ZStack {
+            terminalBody
+                .id(contentID)
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: insertionEdge).combined(with: .opacity),
+                        removal: .move(edge: removalEdge).combined(with: .opacity)
+                    )
+                )
+        }
+        .animation(.easeInOut(duration: 0.22), value: contentID)
+        .onChange(of: bridge.sessionTransitionToken) {
+            let direction = bridge.sessionTransitionDirection >= 0 ? 1 : -1
+            insertionEdge = direction > 0 ? .trailing : .leading
+            removalEdge = direction > 0 ? .leading : .trailing
+            contentID = UUID()
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: swipeMinDistance, coordinateSpace: .local)
+                .onEnded { value in
+                    let actualDx = value.translation.width
+                    let actualDy = value.translation.height
+                    let predictedDx = value.predictedEndTranslation.width
+                    let predictedDy = value.predictedEndTranslation.height
+
+                    // Use the larger of actual/predicted movement to catch short flicks.
+                    let dx = abs(predictedDx) > abs(actualDx) ? predictedDx : actualDx
+                    let dy = abs(predictedDy) > abs(actualDy) ? predictedDy : actualDy
+
+                    guard abs(dx) >= swipeMinDistance else { return }
+                    guard abs(dx) > abs(dy) * swipeAxisRatio else { return }
+                    if dx < 0 {
+                        onSessionSwipe?(1)
+                    } else {
+                        onSessionSwipe?(-1)
+                    }
+                }
+        )
+    }
+
+    @ViewBuilder
+    private var terminalBody: some View {
         if bridge.renderedLines.isEmpty {
             VStack(spacing: 6) {
                 Spacer()
@@ -67,17 +125,36 @@ private struct WatchTerminalContent: View {
                     }
                     .padding(.top, 14)
                     .padding(.horizontal, 2)
-                    .padding(.bottom, 40)
+                    .padding(.bottom, bridge.isProUnlocked ? 40 : 8)
                 }
                 .defaultScrollAnchor(.bottom)
                 .ignoresSafeArea()
                 .onAppear {
-                    proxy.scrollTo("bottom", anchor: .bottom)
+                    scrollToBottom(proxy)
+                }
+                .onChange(of: bridge.lastUpdate) {
+                    scrollToBottom(proxy)
                 }
                 .onChange(of: bridge.renderedLines.count) {
-                    proxy.scrollTo("bottom", anchor: .bottom)
+                    scrollToBottom(proxy)
+                }
+                .onChange(of: isLuminanceReduced) { _, reduced in
+                    if !reduced {
+                        scrollToBottom(proxy)
+                    }
                 }
             }
+        }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        guard !isLuminanceReduced else { return }
+        Task { @MainActor in
+            await Task.yield()
+            proxy.scrollTo("bottom", anchor: .bottom)
+            try? await Task.sleep(for: .milliseconds(60))
+            guard !isLuminanceReduced else { return }
+            proxy.scrollTo("bottom", anchor: .bottom)
         }
     }
 }

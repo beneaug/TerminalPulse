@@ -8,16 +8,12 @@ struct TerminalPulseWatchApp: App {
     var body: some Scene {
         WindowGroup {
             WatchTerminalView(bridge: bridge)
+                .onAppear {
+                    bridge.setScenePhase(scenePhase)
+                }
         }
         .onChange(of: scenePhase) { _, phase in
-            switch phase {
-            case .active:
-                bridge.startAutoRefresh()
-            case .inactive, .background:
-                bridge.stopAutoRefresh()
-            @unknown default:
-                break
-            }
+            bridge.setScenePhase(phase)
         }
     }
 }

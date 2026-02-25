@@ -46,15 +46,36 @@ struct ContentView: View {
             polling.watchBridge = watchBridge
             watchBridge.onRefreshRequested = { polling.fetchForWatch() }
             watchBridge.onSendKeysRequested = { text, special, paneId, reply in
-                let target = paneId ?? polling.selectedTarget
+                guard StoreManager.shared.isProUnlocked else {
+                    reply(false, "Pro required")
+                    return
+                }
+                let normalizedPaneId = paneId?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let paneTarget: String? = {
+                    guard let normalizedPaneId, !normalizedPaneId.isEmpty, normalizedPaneId != "?" else {
+                        return nil
+                    }
+                    return normalizedPaneId
+                }()
+                let target = paneTarget ?? polling.selectedTarget
                 Task {
                     do {
                         _ = try await APIClient().sendKeys(text: text, special: special, target: target)
                         reply(true, nil)
-                        polling.fetchNow()
+                        polling.scheduleWatchInputFollowUp()
                     } catch {
                         reply(false, error.localizedDescription)
                     }
+                }
+            }
+            watchBridge.onSwitchSessionRequested = { direction, reply in
+                guard StoreManager.shared.isProUnlocked else {
+                    reply(false, "Pro required")
+                    return
+                }
+                Task { @MainActor in
+                    let (ok, error) = await polling.switchSession(direction: direction)
+                    reply(ok, error)
                 }
             }
             StoreManager.shared.onProStatusChanged = { _ in
@@ -65,8 +86,10 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .background, .inactive:
+            case .background:
                 polling.enterBackground()
+            case .inactive:
+                break
             case .active:
                 polling.enterForeground()
             @unknown default:

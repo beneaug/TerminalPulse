@@ -56,9 +56,10 @@ async def get_pane_info(target: str | None = None) -> PaneInfo:
     """Get info about the current or specified tmux pane."""
     _validate_target(target)
     fmt = "#{session_name}|#{window_index}|#{window_name}|#{pane_id}"
-    cmd = ["tmux", "display-message", "-p", fmt]
+    cmd = ["tmux", "display-message", "-p"]
     if target:
         cmd.extend(["-t", target])
+    cmd.append(fmt)
     out = (await _run(*cmd)).strip()
     parts = out.split("|", 3)
     if len(parts) < 4:
@@ -103,6 +104,72 @@ async def list_sessions() -> list[SessionInfo]:
             attached=parts[2] == "1",
         ))
     return sessions
+
+
+@dataclass
+class WindowInfo:
+    session_name: str
+    window_index: int
+    window_name: str
+    active: bool
+
+
+async def list_windows(session: str | None = None) -> list[WindowInfo]:
+    """List tmux windows, optionally scoped to one session."""
+    _validate_target(session)
+    fmt = "#{session_name}|#{window_index}|#{window_name}|#{window_active}"
+    cmd = ["tmux", "list-windows", "-F", fmt]
+    if session:
+        cmd.extend(["-t", session])
+    out = await _run(*cmd)
+    windows: list[WindowInfo] = []
+    for line in out.strip().split("\n"):
+        if not line:
+            continue
+        parts = line.split("|", 3)
+        if len(parts) < 4:
+            continue
+        try:
+            window_index = int(parts[1])
+        except ValueError:
+            continue
+        windows.append(
+            WindowInfo(
+                session_name=parts[0],
+                window_index=window_index,
+                window_name=parts[2],
+                active=parts[3] == "1",
+            )
+        )
+    return windows
+
+
+async def switch_window(direction: int, target: str | None = None) -> PaneInfo:
+    """Switch to next/previous window in a tmux session and return active pane info."""
+    _validate_target(target)
+    if direction == 0:
+        raise ValueError("direction must be non-zero")
+
+    # Resolve the session from the provided target (pane/window/session) or current context.
+    current = await get_pane_info(target=target)
+    session_name = current.session_name
+
+    windows = await list_windows(session=session_name)
+    if len(windows) <= 1:
+        raise ValueError("No additional tmux windows")
+
+    ordered = sorted(windows, key=lambda w: w.window_index)
+    ordered_indexes = [w.window_index for w in ordered]
+    try:
+        current_pos = ordered_indexes.index(current.window_index)
+    except ValueError:
+        current_pos = 0
+
+    step = 1 if direction > 0 else -1
+    next_pos = (current_pos + step + len(ordered_indexes)) % len(ordered_indexes)
+    next_index = ordered_indexes[next_pos]
+    await _run("tmux", "select-window", "-t", f"{session_name}:{next_index}")
+    return await get_pane_info(target=session_name)
 
 
 _ALLOWED_SPECIAL_KEYS: frozenset[str] = frozenset({

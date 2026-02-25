@@ -16,7 +16,7 @@ TerminalPulse captures your tmux session output with full ANSI color support and
 
 ## Requirements
 
-- **Server**: macOS with Python 3.9+ and tmux
+- **Server**: macOS with Python 3.10+ and tmux
 - **iOS app**: iPhone running iOS 17.0+
 - **Watch app**: Apple Watch running watchOS 10.0+
 
@@ -72,12 +72,15 @@ The Watch app receives data from the iPhone automatically via WatchConnectivity.
 | `GET /health` | No | Server status, hostname, tmux availability |
 | `GET /capture?lines=80&target=session:window` | Bearer | Capture pane output with ANSI parsing |
 | `GET /sessions` | Bearer | List all tmux sessions |
+| `GET /windows?session=name` | Bearer | List windows (optionally scoped to one session) |
+| `POST /send-keys` | Bearer | Send literal text or an allowed special key to tmux |
+| `POST /switch-window` | Bearer | Switch to next/previous tmux window |
 
 ## Configuration
 
 ### Server
 
-Token is stored in `~/.config/terminalpulse/env`:
+Token is stored in `~/.config/tmuxonwatch/env`:
 
 ```bash
 export TP_TOKEN="your-secure-token-here"
@@ -90,10 +93,10 @@ The launchd service sources this file on startup. To change the token:
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 
 # Edit the env file
-vim ~/.config/terminalpulse/env
+vim ~/.config/tmuxonwatch/env
 
 # Restart the service
-launchctl kickstart -k gui/$(id -u)/com.terminalpulse.server
+launchctl kickstart -k gui/$(id -u)/com.tmuxonwatch.server
 ```
 
 ### iOS App Settings
@@ -122,7 +125,7 @@ For monitoring terminals remotely:
 No. TerminalPulse captures output from tmux panes. If you don't use tmux, this app isn't for you.
 
 **Does it need to be on the same network?**
-By default, the server binds to `127.0.0.1` (localhost only). For LAN access, change the bind address to `0.0.0.0`. For remote access, use Tailscale.
+The installer-managed launchd service binds to `0.0.0.0` so iPhone/watch clients can connect over LAN or Tailscale. If you run `python server/main.py` directly, it binds to `127.0.0.1` unless you pass a different host.
 
 **How much battery does it use on the Watch?**
 The Watch app only receives data when the iPhone pushes updates. It doesn't poll independently. Battery impact is minimal — comparable to other WatchConnectivity apps.
