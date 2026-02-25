@@ -167,4 +167,6 @@ TerminalPulse/
 
 ## License
 
-Copyright (c) 2026 August Benedikt. All rights reserved.
+Source code in this repository is licensed under Apache-2.0 (see [LICENSE](LICENSE)).
+
+Branding and trademarks (including the names `tmuxonwatch` and `TerminalPulse`, logos, and app store assets) are reserved; see [TRADEMARKS.md](TRADEMARKS.md).

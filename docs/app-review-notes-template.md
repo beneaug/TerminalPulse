@@ -1,0 +1,39 @@
+# App Review Notes Template (Copy/Paste)
+
+Use this in App Store Connect -> Version -> App Review Information -> Notes.
+
+## Reviewer Notes
+
+tmuxonwatch is a companion viewer for tmux output from a self-hosted server running on the user’s own Mac.
+
+How to test without external setup:
+
+1. Open app -> Settings -> Demo -> `Load Demo Data`
+2. The app displays sample terminal content and watch UI behavior without requiring a server.
+
+How to test full live mode (optional):
+
+1. On Mac: run `bash <(curl -sSL https://tmuxonwatch.com/install)`
+2. Scan QR code in iPhone app onboarding
+3. Confirm terminal output appears in iPhone and Apple Watch companion app
+
+In-App Purchase details:
+
+- Product ID: `com.tmuxonwatch.pro`
+- Type: Non-consumable (one-time unlock)
+- Unlocks watch input actions (send keys / session switching from watch)
+- Free features remain available without purchase (viewing terminal output, notifications, themes, polling settings)
+
+No account/login is required.
+No third-party ad SDKs or tracking SDKs are used.
+
+## Contact (fill before submission)
+
+- First name:
+- Last name:
+- Phone:
+- Email:
+
+## Demo Account
+
+Not applicable (no user account system).
