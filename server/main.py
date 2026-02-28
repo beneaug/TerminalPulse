@@ -93,6 +93,12 @@ async def capture(
     while parsed and all(run.get("t", "").strip() == "" for run in parsed[-1]):
         parsed.pop()
 
+    pane_current_command = None
+    if pane is not None:
+        pane_current_command = getattr(pane, "pane_current_command", None)
+        if pane_current_command is None:
+            pane_current_command = getattr(pane, "current_command", None)
+
     return {
         "raw": raw,
         "hash": content_hash,
@@ -101,7 +107,7 @@ async def capture(
             "winIndex": pane.window_index,
             "winName": pane.window_name,
             "paneId": pane.pane_id,
-            "paneCurrentCommand": pane.pane_current_command,
+            "paneCurrentCommand": pane_current_command,
         } if pane else None,
         "parsed_lines": parsed,
         "ts": datetime.now(timezone.utc).isoformat(),
