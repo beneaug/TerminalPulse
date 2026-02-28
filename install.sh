@@ -96,23 +96,11 @@ upsert_managed_block() {
     } >> "$file"
 }
 
-setup_optional_notify_hooks() {
+ensure_notify_helper_artifacts() {
     local notify_py="$1"
     local notify_script="$2"
     local hooks_dir="$CONFIG_DIR/hooks"
     local helper_script="$hooks_dir/notify-send"
-    local shell_name shell_rc shell_block marker_start marker_end
-
-    echo ""
-    info "Optional setup: automatic command-finished alerts"
-    echo "  tmuxonwatch can add a managed hook block to your shell config."
-    echo "  This sends a remote push when a tmux command returns to prompt."
-    echo "  It only edits your shell config if you approve below."
-
-    if ! prompt_yes_no "Install automatic shell hooks for remote alerts?" "N"; then
-        warn "Skipped shell hook setup."
-        return
-    fi
 
     mkdir -p "$hooks_dir"
     cat > "$helper_script" <<EOF
@@ -147,6 +135,28 @@ Examples:
 
 Use this helper from any agent/tool hook system (Codex, Claude Code, CI, custom scripts).
 EOF
+
+    printf "%s" "$helper_script"
+}
+
+setup_optional_notify_hooks() {
+    local notify_py="$1"
+    local notify_script="$2"
+    local helper_script
+    local shell_name shell_rc shell_block marker_start marker_end
+
+    echo ""
+    info "Optional setup: automatic command-finished alerts"
+    echo "  tmuxonwatch can add a managed hook block to your shell config."
+    echo "  This sends a remote push when a tmux command returns to prompt."
+    echo "  It only edits your shell config if you approve below."
+
+    if ! prompt_yes_no "Install automatic shell hooks for remote alerts?" "N"; then
+        warn "Skipped shell hook setup."
+        return
+    fi
+
+    helper_script="$(ensure_notify_helper_artifacts "$notify_py" "$notify_script")"
 
     shell_name="$(basename "${SHELL:-zsh}")"
     case "$shell_name" in
@@ -231,6 +241,135 @@ EOF
     ok "Created hook helper: $helper_script"
 }
 
+setup_optional_claude_hooks() {
+    local python_bin="$1"
+    local notify_py="$2"
+    local notify_script="$3"
+    local helper_script
+    local claude_dir="$HOME/.claude"
+    local claude_hooks_dir="$claude_dir/hooks"
+    local claude_hook_script="$claude_hooks_dir/tmuxonwatch-notify.sh"
+    local claude_settings="$claude_dir/settings.json"
+    local backup_path=""
+
+    echo ""
+    info "Optional setup: Claude Code ready-for-input alerts"
+    echo "  tmuxonwatch can add a managed Claude Code hook configuration."
+    echo "  This sends a push notification when Claude stops and is waiting for input."
+    echo "  It only edits ~/.claude/settings.json and ~/.claude/hooks if you approve below."
+
+    if ! prompt_yes_no "Configure Claude Code hooks for remote alerts?" "N"; then
+        warn "Skipped Claude Code hook setup."
+        return
+    fi
+
+    helper_script="$(ensure_notify_helper_artifacts "$notify_py" "$notify_script")"
+    mkdir -p "$claude_hooks_dir"
+
+    cat > "$claude_hook_script" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null || true
+HELPER="$HOME/.config/tmuxonwatch/hooks/notify-send"
+if [[ -x "$HELPER" ]]; then
+  "$HELPER" "claude-stop-$(date +%s)" "Claude Code" "Done - ready for input." "999" || true
+fi
+exit 0
+EOF
+    chmod +x "$claude_hook_script"
+
+    if [[ -f "$claude_settings" ]]; then
+        backup_path="${claude_settings}.tmuxonwatch.bak.$(date +%Y%m%d%H%M%S)"
+        cp "$claude_settings" "$backup_path"
+        ok "Backed up existing Claude settings to $backup_path"
+    fi
+
+    if "$python_bin" - "$claude_settings" "$claude_hook_script" <<'PY'
+import json
+import os
+import sys
+
+settings_path = sys.argv[1]
+hook_command = sys.argv[2]
+
+data = {}
+if os.path.exists(settings_path):
+    try:
+        with open(settings_path, "r", encoding="utf-8") as f:
+            loaded = json.load(f)
+        if isinstance(loaded, dict):
+            data = loaded
+    except Exception:
+        data = {}
+
+hooks = data.get("hooks")
+if not isinstance(hooks, dict):
+    hooks = {}
+data["hooks"] = hooks
+
+def ensure_event_hook(event_name: str) -> None:
+    groups = hooks.get(event_name)
+    if not isinstance(groups, list):
+        groups = []
+
+    target_group = None
+    for group in groups:
+        if isinstance(group, dict) and group.get("matcher", "") == "":
+            target_group = group
+            break
+
+    if target_group is None:
+        target_group = {"matcher": "", "hooks": []}
+        groups.append(target_group)
+
+    group_hooks = target_group.get("hooks")
+    if not isinstance(group_hooks, list):
+        group_hooks = []
+        target_group["hooks"] = group_hooks
+
+    expanded_new = os.path.expanduser(hook_command)
+    exists = False
+    for hook in group_hooks:
+        if not isinstance(hook, dict):
+            continue
+        if hook.get("type") != "command":
+            continue
+        existing_cmd = str(hook.get("command", ""))
+        if os.path.expanduser(existing_cmd) == expanded_new:
+            if "timeout" not in hook:
+                hook["timeout"] = 10
+            exists = True
+            break
+
+    if not exists:
+        group_hooks.append(
+            {
+                "type": "command",
+                "command": hook_command,
+                "timeout": 10,
+            }
+        )
+
+    hooks[event_name] = groups
+
+ensure_event_hook("Stop")
+ensure_event_hook("SubagentStop")
+
+os.makedirs(os.path.dirname(settings_path), exist_ok=True)
+with open(settings_path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+PY
+    then
+        ok "Configured Claude hooks in $claude_settings"
+        ok "Installed Claude hook script: $claude_hook_script"
+        ok "Claude notifications will use helper: $helper_script"
+        warn "Restart Claude Code sessions to apply new hook settings."
+    else
+        warn "Could not update Claude settings; hook setup skipped."
+    fi
+}
+
 echo ""
 echo -e "${BOLD}tmuxonwatch Server Installer${RESET}"
 echo "─────────────────────────────────"
@@ -313,7 +452,8 @@ if [[ -z "$SERVER_HOST" ]]; then
     echo ""
     echo -ne "  Continue anyway? [y/N] "
     read -r CONTINUE < /dev/tty 2>/dev/null || CONTINUE="y"
-    if [[ "${CONTINUE,,}" != "y" ]]; then
+    CONTINUE_LOWER="$(printf '%s' "$CONTINUE" | tr '[:upper:]' '[:lower:]')"
+    if [[ "$CONTINUE_LOWER" != "y" ]]; then
         echo ""
         info "Install Tailscale, then re-run this script."
         exit 0
@@ -502,6 +642,8 @@ fi
 
 # Optional: hook shell prompt return to automatic remote push notifications.
 setup_optional_notify_hooks "$INSTALL_DIR/.venv/bin/python3" "$INSTALL_DIR/notify_event.py"
+# Optional: hook Claude Code Stop/SubagentStop events for ready-for-input push alerts.
+setup_optional_claude_hooks "$PYTHON" "$INSTALL_DIR/.venv/bin/python3" "$INSTALL_DIR/notify_event.py"
 
 # ── Output connection info ────────────────────────────────
 echo ""
