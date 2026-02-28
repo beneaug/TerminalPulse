@@ -29,9 +29,9 @@ _security = HTTPBearer()
 
 TOKEN = os.environ.get("TP_TOKEN", "changeme")
 NOTIFY_TOKEN = os.environ.get("TP_NOTIFY_TOKEN", "").strip()
-NOTIFY_WEBHOOK_URL = os.environ.get("TP_NOTIFY_WEBHOOK_URL", "https://tmuxonwatch.com/api/webhook")
-NOTIFY_REGISTER_URL = os.environ.get("TP_NOTIFY_REGISTER_URL", "https://tmuxonwatch.com/api/push/register")
-NOTIFY_UNREGISTER_URL = os.environ.get("TP_NOTIFY_UNREGISTER_URL", "https://tmuxonwatch.com/api/push/unregister")
+NOTIFY_WEBHOOK_URL = os.environ.get("TP_NOTIFY_WEBHOOK_URL", "https://www.tmuxonwatch.com/api/webhook")
+NOTIFY_REGISTER_URL = os.environ.get("TP_NOTIFY_REGISTER_URL", "https://www.tmuxonwatch.com/api/push/register")
+NOTIFY_UNREGISTER_URL = os.environ.get("TP_NOTIFY_UNREGISTER_URL", "https://www.tmuxonwatch.com/api/push/unregister")
 
 if TOKEN == "changeme":
     import sys

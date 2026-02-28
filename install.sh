@@ -320,9 +320,9 @@ echo ""
 
 # ── QR code for iOS pairing ──────────────────────────────
 # Encode server URL + token as JSON for QR scanning
-NOTIFY_WEBHOOK_URL="https://tmuxonwatch.com/api/webhook"
-NOTIFY_REGISTER_URL="https://tmuxonwatch.com/api/push/register"
-NOTIFY_UNREGISTER_URL="https://tmuxonwatch.com/api/push/unregister"
+NOTIFY_WEBHOOK_URL="https://www.tmuxonwatch.com/api/webhook"
+NOTIFY_REGISTER_URL="https://www.tmuxonwatch.com/api/push/register"
+NOTIFY_UNREGISTER_URL="https://www.tmuxonwatch.com/api/push/unregister"
 QR_PAYLOAD="{\"url\":\"$SERVER_URL\",\"token\":\"$TP_TOKEN\",\"notifyToken\":\"$TP_NOTIFY_TOKEN\",\"notifyWebhook\":\"$NOTIFY_WEBHOOK_URL\",\"notifyRegister\":\"$NOTIFY_REGISTER_URL\",\"notifyUnregister\":\"$NOTIFY_UNREGISTER_URL\"}"
 
 if command -v qrencode &>/dev/null; then
