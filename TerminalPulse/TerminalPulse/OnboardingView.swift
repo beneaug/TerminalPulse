@@ -3,6 +3,7 @@ import AVFoundation
 
 struct OnboardingView: View {
     @Binding var isComplete: Bool
+    private let installCommand = "brew install beneaug/tmuxonwatch/tmuxonwatch && tmuxonwatch-install"
     @State private var currentStep = 0
 
     var body: some View {
@@ -80,14 +81,14 @@ struct OnboardingView: View {
                 .foregroundStyle(.white.opacity(0.6))
 
             HStack {
-                Text("bash <(curl -sSL https://tmuxonwatch.com/install)")
+                Text(installCommand)
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(.green)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
 
                 Button {
-                    UIPasteboard.general.string = "bash <(curl -sSL https://tmuxonwatch.com/install)"
+                    UIPasteboard.general.string = installCommand
                 } label: {
                     Image(systemName: "doc.on.doc")
                         .font(.system(size: 14))
@@ -373,14 +374,15 @@ struct OnboardingView: View {
 
     private func handleQRResult(_ json: String) {
         guard let data = json.data(using: .utf8),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String],
-              let url = dict["url"],
-              let token = dict["token"] else {
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let url = dict["url"] as? String,
+              let token = dict["token"] as? String else {
             connectionStatus = .failure("QR code not recognized. Scan the code from the install script.")
             return
         }
         serverURL = url
         authToken = token
+        NotificationService.applyRemoteConfig(NotificationService.remoteConfig(from: dict))
         testAndConnect()
     }
 
@@ -405,6 +407,7 @@ struct OnboardingView: View {
                     // Non-auth API failures (for example no tmux sessions yet) still
                     // prove token acceptance by the server.
                 }
+                await refreshRemoteConfigFromServer(api: api)
                 connectionStatus = .success
                 try? await Task.sleep(for: .milliseconds(800))
                 withAnimation { currentStep = 2 }
@@ -435,6 +438,22 @@ struct OnboardingView: View {
         UserDefaults.standard.set("http://127.0.0.1:8787", forKey: "serverURL")
         UserDefaults.standard.set(true, forKey: "onboardingComplete")
         withAnimation { isComplete = true }
+    }
+
+    private func refreshRemoteConfigFromServer(api: APIClient) async {
+        do {
+            let config = try await api.fetchNotifyConfig()
+            NotificationService.applyRemoteConfig(
+                .init(
+                    notifyToken: config.notifyToken,
+                    notifyWebhookURL: config.notifyWebhookURL,
+                    notifyRegisterURL: config.notifyRegisterURL,
+                    notifyUnregisterURL: config.notifyUnregisterURL
+                )
+            )
+        } catch {
+            // Older server versions may not expose notify config.
+        }
     }
 }
 

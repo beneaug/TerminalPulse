@@ -41,6 +41,192 @@ ok()    { echo -e "${GREEN}✓${RESET} $1"; }
 warn()  { echo -e "${YELLOW}!${RESET} $1"; }
 fail()  { echo -e "${RED}✗ $1${RESET}"; exit 1; }
 
+prompt_yes_no() {
+    local prompt="$1"
+    local default="${2:-N}"
+    local choices="[y/N]"
+    local answer=""
+
+    if [[ "${default^^}" == "Y" ]]; then
+        choices="[Y/n]"
+    fi
+
+    echo -ne "  ${prompt} ${choices} "
+    if read -r answer < /dev/tty 2>/dev/null; then
+        :
+    else
+        answer="$default"
+    fi
+
+    answer="${answer:-$default}"
+    case "${answer,,}" in
+        y|yes) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+upsert_managed_block() {
+    local file="$1"
+    local start_marker="$2"
+    local end_marker="$3"
+    local body="$4"
+    local tmp
+
+    mkdir -p "$(dirname "$file")"
+    touch "$file"
+    tmp="$(mktemp)"
+
+    awk -v start="$start_marker" -v end="$end_marker" '
+        BEGIN { skip = 0 }
+        index($0, start) == 1 { skip = 1; next }
+        skip && index($0, end) == 1 { skip = 0; next }
+        !skip { print $0 }
+    ' "$file" > "$tmp"
+
+    mv "$tmp" "$file"
+    {
+        echo ""
+        echo "$start_marker"
+        printf "%s\n" "$body"
+        echo "$end_marker"
+    } >> "$file"
+}
+
+setup_optional_notify_hooks() {
+    local notify_py="$1"
+    local notify_script="$2"
+    local hooks_dir="$CONFIG_DIR/hooks"
+    local helper_script="$hooks_dir/notify-send"
+    local shell_name shell_rc shell_block marker_start marker_end
+
+    echo ""
+    info "Optional setup: automatic command-finished alerts"
+    echo "  tmuxonwatch can add a managed hook block to your shell config."
+    echo "  This sends a remote push when a tmux command returns to prompt."
+    echo "  It only edits your shell config if you approve below."
+
+    if ! prompt_yes_no "Install automatic shell hooks for remote alerts?" "N"; then
+        warn "Skipped shell hook setup."
+        return
+    fi
+
+    mkdir -p "$hooks_dir"
+    cat > "$helper_script" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+TMUXONWATCH_NOTIFY_PY="$notify_py"
+TMUXONWATCH_NOTIFY_SCRIPT="$notify_script"
+EVENT_ID="\${1:-manual-\$(date +%s)}"
+TITLE="\${2:-Task complete}"
+MESSAGE="\${3:-Waiting for input.}"
+DURATION="\${4:-999}"
+if [[ -x "\$TMUXONWATCH_NOTIFY_PY" && -f "\$TMUXONWATCH_NOTIFY_SCRIPT" ]]; then
+  "\$TMUXONWATCH_NOTIFY_PY" "\$TMUXONWATCH_NOTIFY_SCRIPT" \\
+    --event-id "\$EVENT_ID" \\
+    --title "\$TITLE" \\
+    --message "\$MESSAGE" \\
+    --duration "\$DURATION" >/dev/null 2>&1 || true
+fi
+EOF
+    chmod +x "$helper_script"
+
+    cat > "$hooks_dir/README.md" <<EOF
+tmuxonwatch hook helpers
+========================
+
+Helper command:
+  $helper_script "<event_id>" "<title>" "<message>" "<duration_seconds>"
+
+Examples:
+  $helper_script "codex-task-\$(date +%s)" "Codex task complete" "Waiting for your input." "30"
+  $helper_script "claude-action-\$(date +%s)" "Claude needs input" "Choose an option in terminal." "15"
+
+Use this helper from any agent/tool hook system (Codex, Claude Code, CI, custom scripts).
+EOF
+
+    shell_name="$(basename "${SHELL:-zsh}")"
+    case "$shell_name" in
+        zsh)
+            shell_rc="$HOME/.zshrc"
+            shell_block=$(cat <<'EOF'
+if [[ -z "${TMUXONWATCH_NOTIFY_HOOKS_INSTALLED:-}" ]]; then
+  export TMUXONWATCH_NOTIFY_HOOKS_INSTALLED=1
+  export TMUXONWATCH_NOTIFY_PY="__NOTIFY_PY__"
+  export TMUXONWATCH_NOTIFY_SCRIPT="__NOTIFY_SCRIPT__"
+
+  _tmuxonwatch_notify_flush() {
+    if [[ -x "$TMUXONWATCH_NOTIFY_PY" && -f "$TMUXONWATCH_NOTIFY_SCRIPT" ]]; then
+      "$TMUXONWATCH_NOTIFY_PY" "$TMUXONWATCH_NOTIFY_SCRIPT" --flush-only >/dev/null 2>&1 || true
+    fi
+  }
+
+  _tmuxonwatch_notify_send() {
+    local event_id="$1"
+    local title="$2"
+    local message="$3"
+    local duration="$4"
+    if [[ -x "$TMUXONWATCH_NOTIFY_PY" && -f "$TMUXONWATCH_NOTIFY_SCRIPT" ]]; then
+      "$TMUXONWATCH_NOTIFY_PY" "$TMUXONWATCH_NOTIFY_SCRIPT" \
+        --event-id "$event_id" \
+        --title "$title" \
+        --message "$message" \
+        --duration "$duration" >/dev/null 2>&1 || true
+    fi
+  }
+
+  _tmuxonwatch_preexec_hook() {
+    TMUXONWATCH_CMD_START="$(date +%s)"
+    TMUXONWATCH_CMD_TEXT="$1"
+  }
+
+  _tmuxonwatch_precmd_hook() {
+    local exit_code=$?
+    local now duration cmd pane title message event_id
+
+    _tmuxonwatch_notify_flush
+    [[ -n "${TMUX:-}" ]] || return 0
+    [[ -n "${TMUXONWATCH_CMD_START:-}" ]] || return 0
+
+    now="$(date +%s)"
+    duration=$((now - TMUXONWATCH_CMD_START))
+    cmd="${TMUXONWATCH_CMD_TEXT:-command}"
+    pane="$(tmux display-message -p "#{session_name}:#{window_index}:#{window_name}" 2>/dev/null || true)"
+    title="${pane:-tmux command finished}"
+    message="${cmd} (exit ${exit_code}, ${duration}s)"
+    event_id="${pane}|${cmd}|${TMUXONWATCH_CMD_START}|${exit_code}"
+
+    TMUXONWATCH_CMD_START=""
+    TMUXONWATCH_CMD_TEXT=""
+    _tmuxonwatch_notify_send "$event_id" "$title" "$message" "$duration"
+  }
+
+  autoload -Uz add-zsh-hook
+  add-zsh-hook preexec _tmuxonwatch_preexec_hook
+  add-zsh-hook precmd _tmuxonwatch_precmd_hook
+fi
+EOF
+)
+            ;;
+        bash)
+            warn "Bash shell detected; auto-hook install currently targets zsh."
+            warn "Helper script created at $helper_script for manual bash integration."
+            return
+            ;;
+        *)
+            warn "Unsupported login shell '$shell_name'. Wrote helper at $helper_script."
+            return
+            ;;
+    esac
+
+    shell_block="${shell_block//__NOTIFY_PY__/$notify_py}"
+    shell_block="${shell_block//__NOTIFY_SCRIPT__/$notify_script}"
+    marker_start="# >>> tmuxonwatch notify hooks >>>"
+    marker_end="# <<< tmuxonwatch notify hooks <<<"
+    upsert_managed_block "$shell_rc" "$marker_start" "$marker_end" "$shell_block"
+    ok "Installed notify hooks in $shell_rc"
+    ok "Created hook helper: $helper_script"
+}
+
 echo ""
 echo -e "${BOLD}tmuxonwatch Server Installer${RESET}"
 echo "─────────────────────────────────"
@@ -152,7 +338,7 @@ fi
 # ── Server files ─────────────────────────────────────────
 mkdir -p "$INSTALL_DIR"
 GITHUB_RAW="https://raw.githubusercontent.com/beneaug/TerminalPulse/main/server"
-SERVER_FILES="main.py tmux_bridge.py ansi_parser.py requirements.txt"
+SERVER_FILES="main.py tmux_bridge.py ansi_parser.py requirements.txt notify_event.py"
 
 # Download/update server files from GitHub (skip if running from repo)
 if [[ "$INSTALL_DIR" != *"TerminalPulse"* ]]; then
@@ -201,6 +387,10 @@ info "Installing dependencies..."
 # Install qrcode so QR always works in the terminal
 "$INSTALL_DIR/.venv/bin/pip" install -q qrcode 2>/dev/null || true
 ok "Dependencies installed"
+
+if [[ -f "$INSTALL_DIR/notify_event.py" ]]; then
+    chmod +x "$INSTALL_DIR/notify_event.py"
+fi
 
 # ── Generate / preserve token ─────────────────────────────
 mkdir -p "$CONFIG_DIR"
@@ -305,6 +495,9 @@ if [[ "$SERVER_STARTED" == "true" ]]; then
         warn "Your local server files may be outdated; rerun installer with network access."
     fi
 fi
+
+# Optional: hook shell prompt return to automatic remote push notifications.
+setup_optional_notify_hooks "$INSTALL_DIR/.venv/bin/python3" "$INSTALL_DIR/notify_event.py"
 
 # ── Output connection info ────────────────────────────────
 echo ""
