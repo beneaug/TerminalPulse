@@ -46,8 +46,11 @@ prompt_yes_no() {
     local default="${2:-N}"
     local choices="[y/N]"
     local answer=""
+    local default_upper
+    local answer_lower
 
-    if [[ "${default^^}" == "Y" ]]; then
+    default_upper="$(printf '%s' "$default" | tr '[:lower:]' '[:upper:]')"
+    if [[ "$default_upper" == "Y" ]]; then
         choices="[Y/n]"
     fi
 
@@ -59,7 +62,8 @@ prompt_yes_no() {
     fi
 
     answer="${answer:-$default}"
-    case "${answer,,}" in
+    answer_lower="$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')"
+    case "$answer_lower" in
         y|yes) return 0 ;;
         *) return 1 ;;
     esac
