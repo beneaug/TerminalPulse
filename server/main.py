@@ -28,6 +28,10 @@ app = FastAPI(title="TerminalPulse", version="1.0.0")
 _security = HTTPBearer()
 
 TOKEN = os.environ.get("TP_TOKEN", "changeme")
+NOTIFY_TOKEN = os.environ.get("TP_NOTIFY_TOKEN", "").strip()
+NOTIFY_WEBHOOK_URL = os.environ.get("TP_NOTIFY_WEBHOOK_URL", "https://tmuxonwatch.com/api/webhook")
+NOTIFY_REGISTER_URL = os.environ.get("TP_NOTIFY_REGISTER_URL", "https://tmuxonwatch.com/api/push/register")
+NOTIFY_UNREGISTER_URL = os.environ.get("TP_NOTIFY_UNREGISTER_URL", "https://tmuxonwatch.com/api/push/unregister")
 
 if TOKEN == "changeme":
     import sys
@@ -53,6 +57,16 @@ async def health():
         "status": "ok",
         "hostname": socket.gethostname(),
         "tmux": await has_tmux(),
+    }
+
+
+@app.get("/notify-config")
+async def notify_config(_: str = Depends(_verify)):
+    return {
+        "notify_token": NOTIFY_TOKEN or None,
+        "notify_webhook_url": NOTIFY_WEBHOOK_URL,
+        "notify_register_url": NOTIFY_REGISTER_URL,
+        "notify_unregister_url": NOTIFY_UNREGISTER_URL,
     }
 
 
@@ -87,6 +101,7 @@ async def capture(
             "winIndex": pane.window_index,
             "winName": pane.window_name,
             "paneId": pane.pane_id,
+            "paneCurrentCommand": pane.pane_current_command,
         } if pane else None,
         "parsed_lines": parsed,
         "ts": datetime.now(timezone.utc).isoformat(),

@@ -207,20 +207,27 @@ mkdir -p "$CONFIG_DIR"
 
 if [[ -f "$CONFIG_DIR/env" ]]; then
     source "$CONFIG_DIR/env" 2>/dev/null || true
-    if [[ -n "${TP_TOKEN:-}" && "${TP_TOKEN}" != "changeme" ]]; then
-        ok "Using existing auth token"
-    else
-        TP_TOKEN=$("$PYTHON" -c "import secrets; print(secrets.token_urlsafe(32))")
-        echo "export TP_TOKEN=\"$TP_TOKEN\"" > "$CONFIG_DIR/env"
-        chmod 600 "$CONFIG_DIR/env"
-        ok "Generated new auth token (old one was invalid)"
-    fi
+fi
+
+if [[ -n "${TP_TOKEN:-}" && "${TP_TOKEN}" != "changeme" ]]; then
+    ok "Using existing auth token"
 else
     TP_TOKEN=$("$PYTHON" -c "import secrets; print(secrets.token_urlsafe(32))")
-    echo "export TP_TOKEN=\"$TP_TOKEN\"" > "$CONFIG_DIR/env"
-    chmod 600 "$CONFIG_DIR/env"
     ok "Generated auth token"
 fi
+
+if [[ -n "${TP_NOTIFY_TOKEN:-}" ]]; then
+    ok "Using existing notification token"
+else
+    TP_NOTIFY_TOKEN=$("$PYTHON" -c "import secrets; print(secrets.token_urlsafe(24))")
+    ok "Generated notification token"
+fi
+
+cat > "$CONFIG_DIR/env" << ENVFILE
+export TP_TOKEN="$TP_TOKEN"
+export TP_NOTIFY_TOKEN="$TP_NOTIFY_TOKEN"
+ENVFILE
+chmod 600 "$CONFIG_DIR/env"
 
 # ── Stop existing service gracefully ──────────────────────
 if launchctl print "gui/$(id -u)/$PLIST_NAME" &>/dev/null; then
@@ -306,13 +313,17 @@ echo -e "${BOLD}${GREEN}Installation complete!${RESET}"
 echo ""
 echo -e "  Server:  ${CYAN}$SERVER_URL${RESET}"
 echo -e "  Token:   ${CYAN}$TP_TOKEN${RESET}"
+echo -e "  Notify:  ${CYAN}$TP_NOTIFY_TOKEN${RESET}"
 echo -e "  Config:  ${CYAN}$CONFIG_DIR/env${RESET}"
 echo -e "  Logs:    ${CYAN}/tmp/tmuxonwatch.{out,err}.log${RESET}"
 echo ""
 
 # ── QR code for iOS pairing ──────────────────────────────
 # Encode server URL + token as JSON for QR scanning
-QR_PAYLOAD="{\"url\":\"$SERVER_URL\",\"token\":\"$TP_TOKEN\"}"
+NOTIFY_WEBHOOK_URL="https://tmuxonwatch.com/api/webhook"
+NOTIFY_REGISTER_URL="https://tmuxonwatch.com/api/push/register"
+NOTIFY_UNREGISTER_URL="https://tmuxonwatch.com/api/push/unregister"
+QR_PAYLOAD="{\"url\":\"$SERVER_URL\",\"token\":\"$TP_TOKEN\",\"notifyToken\":\"$TP_NOTIFY_TOKEN\",\"notifyWebhook\":\"$NOTIFY_WEBHOOK_URL\",\"notifyRegister\":\"$NOTIFY_REGISTER_URL\",\"notifyUnregister\":\"$NOTIFY_UNREGISTER_URL\"}"
 
 if command -v qrencode &>/dev/null; then
     echo -e "${BOLD}Scan this QR code in the tmux on watch iOS app:${RESET}"
@@ -343,15 +354,24 @@ except ImportError:
     print('Manual setup — enter these in the tmux on watch iOS app:')
     print(f'  Server URL: {sys.argv[2]}')
     print(f'  Token:      {sys.argv[3]}')
-" "$QR_PAYLOAD" "$SERVER_URL" "$TP_TOKEN" 2>/dev/null || {
+    print(f'  Notify:     {sys.argv[4]}')
+    print(f'  Webhook:    {sys.argv[5]}')
+    print(f'  Unregister: {sys.argv[6]}')
+" "$QR_PAYLOAD" "$SERVER_URL" "$TP_TOKEN" "$TP_NOTIFY_TOKEN" "$NOTIFY_WEBHOOK_URL" "$NOTIFY_UNREGISTER_URL" 2>/dev/null || {
     echo "Manual setup — enter these in the tmux on watch iOS app:"
     echo -e "  Server URL: ${CYAN}$SERVER_URL${RESET}"
     echo -e "  Token:      ${CYAN}$TP_TOKEN${RESET}"
+    echo -e "  Notify:     ${CYAN}$TP_NOTIFY_TOKEN${RESET}"
+    echo -e "  Webhook:    ${CYAN}$NOTIFY_WEBHOOK_URL${RESET}"
+    echo -e "  Unregister: ${CYAN}$NOTIFY_UNREGISTER_URL${RESET}"
 }
 else
     echo "Manual setup — enter these in the tmux on watch iOS app:"
     echo -e "  Server URL: ${CYAN}$SERVER_URL${RESET}"
     echo -e "  Token:      ${CYAN}$TP_TOKEN${RESET}"
+    echo -e "  Notify:     ${CYAN}$TP_NOTIFY_TOKEN${RESET}"
+    echo -e "  Webhook:    ${CYAN}$NOTIFY_WEBHOOK_URL${RESET}"
+    echo -e "  Unregister: ${CYAN}$NOTIFY_UNREGISTER_URL${RESET}"
 fi
 
 echo ""
