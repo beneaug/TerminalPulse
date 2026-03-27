@@ -7,9 +7,9 @@ This runbook is tailored to the current project configuration in this repository
 - App name: `tmuxonwatch` (App Store Connect record already created)
 - iOS bundle ID: `com.augustbenedikt.TerminalPulse`
 - watchOS companion bundle ID: `com.augustbenedikt.TerminalPulse.watchkitapp`
-- Current marketing version: `1.0.4`
-- Current build number: `3`
-- IAP product ID (non-consumable): `com.tmuxonwatch.pro`
+- Current marketing version: `1.0.7`
+- Current build number: `7`
+- IAP product ID (non-consumable): `tmuxonwatchpro`
 - App icon asset present: `1024x1024`, no alpha
 
 ## Why The App Icon Is Missing In App Store Connect
@@ -37,7 +37,8 @@ Reference: https://developer.apple.com/help/app-store-connect/manage-app-informa
    - Screenshots for required device classes
    - App Review Information (contact + notes)
 7. In App Privacy, ensure data collection answers are accurate and complete.
-8. In the app version, attach IAP `com.tmuxonwatch.pro` in `In-App Purchases and Subscriptions`.
+   - Include optional Remote Push relay behavior (APNs + hosting/storage providers) when enabled.
+8. In the app version, attach IAP `tmuxonwatchpro` in `In-App Purchases and Subscriptions`.
 9. Click `Add for Review`, then `Submit for Review`.
 
 References:
@@ -62,7 +63,7 @@ References:
 1. Upload build.
 2. Wait until build is `Processed`.
 3. Select build for version `1.0`.
-4. Attach `com.tmuxonwatch.pro` in that same version submission.
+4. Attach `tmuxonwatchpro` in that same version submission.
 5. Add App Review notes (see `docs/app-review-notes-template.md`).
 6. Submit review.
 
@@ -79,7 +80,7 @@ Mitigation: provide clear review notes + mention demo mode.
 Mitigation: verify it appears in `In-App Purchases and Subscriptions` on version page before submitting.
 
 3. Privacy answers too narrow.
-Mitigation: answer based on app + any integrated third-party SDK behavior.
+Mitigation: answer based on app behavior and optional Remote Push relay providers when enabled.
 
 4. Missing icon/screenshot confusion.
 Mitigation: ensure processed build is selected; screenshots uploaded for all required sizes.

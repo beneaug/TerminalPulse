@@ -18,14 +18,23 @@ How to test full live mode (optional):
 2. Scan QR code in iPhone app onboarding
 3. Confirm terminal output appears in iPhone and Apple Watch companion app
 
+Remote Push (optional):
+
+1. Open Settings -> `Remote Push (Webhook)`
+2. Turn on `Enable Remote Push`
+3. Allow notification permission when prompted
+4. Tap `Send Test Push`
+
 In-App Purchase details:
 
-- Product ID: `com.tmuxonwatch.pro`
+- Product ID: `tmuxonwatchpro`
 - Type: Non-consumable (one-time unlock)
 - Unlocks watch input actions (send keys / session switching from watch)
 - Free features remain available without purchase (viewing terminal output, notifications, themes, polling settings)
 
 The iPhone app has standalone functionality as a live terminal viewer/configuration app; Apple Watch is a companion display/input surface.
+Remote Push is optional and disabled by default on new installs.
+Core terminal viewing works without enabling notifications.
 
 No account/login is required.
 No third-party ad SDKs or tracking SDKs are used.

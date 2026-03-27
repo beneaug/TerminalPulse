@@ -246,11 +246,13 @@ setup_optional_claude_hooks() {
     local notify_py="$2"
     local notify_script="$3"
     local helper_script
+    local parser_python="$python_bin"
     local claude_dir="$HOME/.claude"
     local claude_hooks_dir="$claude_dir/hooks"
     local claude_hook_script="$claude_hooks_dir/tmuxonwatch-notify.sh"
     local claude_settings="$claude_dir/settings.json"
     local backup_path=""
+    local claude_hook_script_contents=""
 
     echo ""
     info "Optional setup: Claude Code ready-for-input alerts"
@@ -265,17 +267,68 @@ setup_optional_claude_hooks() {
 
     helper_script="$(ensure_notify_helper_artifacts "$notify_py" "$notify_script")"
     mkdir -p "$claude_hooks_dir"
+    if [[ ! -x "$parser_python" ]]; then
+        parser_python="$(command -v python3 || true)"
+    fi
 
     cat > "$claude_hook_script" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-cat >/dev/null || true
+
 HELPER="$HOME/.config/tmuxonwatch/hooks/notify-send"
-if [[ -x "$HELPER" ]]; then
-  "$HELPER" "claude-stop-$(date +%s)" "Claude Code" "Done - ready for input." "999" || true
+PARSER_PY="__PARSER_PY__"
+PAYLOAD="$(cat || true)"
+
+if [[ ! -x "$HELPER" ]]; then
+  exit 0
 fi
+
+if [[ -z "${PAYLOAD//[[:space:]]/}" ]]; then
+  exit 0
+fi
+
+if [[ ! -x "$PARSER_PY" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    PARSER_PY="$(command -v python3)"
+  else
+    exit 0
+  fi
+fi
+
+if ! SESSION_ID="$(
+  PAYLOAD_JSON="$PAYLOAD" "$PARSER_PY" - <<'PY'
+import json
+import os
+import sys
+
+try:
+    data = json.loads(os.environ.get("PAYLOAD_JSON", ""))
+except Exception:
+    raise SystemExit(1)
+
+if not isinstance(data, dict):
+    raise SystemExit(1)
+
+if str(data.get("hook_event_name", "")) != "Stop":
+    raise SystemExit(1)
+
+if bool(data.get("stop_hook_active")):
+    raise SystemExit(1)
+
+print(str(data.get("session_id", "")).strip())
+PY
+)"; then
+  exit 0
+fi
+
+EVENT_ID="claude-stop-${SESSION_ID:-unknown}-$(date +%s)"
+"$HELPER" "$EVENT_ID" "Claude Code" "Done - ready for input." "999" || true
+
 exit 0
 EOF
+    claude_hook_script_contents="$(cat "$claude_hook_script")"
+    claude_hook_script_contents="${claude_hook_script_contents//__PARSER_PY__/$parser_python}"
+    printf "%s\n" "$claude_hook_script_contents" > "$claude_hook_script"
     chmod +x "$claude_hook_script"
 
     if [[ -f "$claude_settings" ]]; then
@@ -352,8 +405,46 @@ def ensure_event_hook(event_name: str) -> None:
 
     hooks[event_name] = groups
 
+def remove_event_hook(event_name: str) -> None:
+    groups = hooks.get(event_name)
+    if not isinstance(groups, list):
+        return
+
+    expanded_new = os.path.expanduser(hook_command)
+    new_groups = []
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+
+        group_hooks = group.get("hooks")
+        if not isinstance(group_hooks, list):
+            new_groups.append(group)
+            continue
+
+        filtered_hooks = []
+        for hook in group_hooks:
+            if not isinstance(hook, dict):
+                filtered_hooks.append(hook)
+                continue
+            if hook.get("type") != "command":
+                filtered_hooks.append(hook)
+                continue
+            existing_cmd = str(hook.get("command", ""))
+            if os.path.expanduser(existing_cmd) == expanded_new:
+                continue
+            filtered_hooks.append(hook)
+
+        if filtered_hooks:
+            group["hooks"] = filtered_hooks
+            new_groups.append(group)
+
+    if new_groups:
+        hooks[event_name] = new_groups
+    else:
+        hooks.pop(event_name, None)
+
 ensure_event_hook("Stop")
-ensure_event_hook("SubagentStop")
+remove_event_hook("SubagentStop")
 
 os.makedirs(os.path.dirname(settings_path), exist_ok=True)
 with open(settings_path, "w", encoding="utf-8") as f:
@@ -642,7 +733,7 @@ fi
 
 # Optional: hook shell prompt return to automatic remote push notifications.
 setup_optional_notify_hooks "$INSTALL_DIR/.venv/bin/python3" "$INSTALL_DIR/notify_event.py"
-# Optional: hook Claude Code Stop/SubagentStop events for ready-for-input push alerts.
+# Optional: hook Claude Code Stop events for ready-for-input push alerts.
 setup_optional_claude_hooks "$PYTHON" "$INSTALL_DIR/.venv/bin/python3" "$INSTALL_DIR/notify_event.py"
 
 # ── Output connection info ────────────────────────────────

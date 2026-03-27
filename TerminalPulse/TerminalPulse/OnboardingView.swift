@@ -408,6 +408,10 @@ struct OnboardingView: View {
                     // prove token acceptance by the server.
                 }
                 await refreshRemoteConfigFromServer(api: api)
+                if DemoData.isDemo {
+                    DemoData.deactivate()
+                    CaptureCache.clear()
+                }
                 connectionStatus = .success
                 try? await Task.sleep(for: .milliseconds(800))
                 withAnimation { currentStep = 2 }
@@ -429,7 +433,6 @@ struct OnboardingView: View {
             _ = KeychainService.save(key: "authToken", value: authToken)
         }
         UserDefaults.standard.set(true, forKey: "onboardingComplete")
-        NotificationService.requestPermission()
         withAnimation { isComplete = true }
     }
 

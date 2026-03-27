@@ -19,9 +19,6 @@
 		AA000000000000000000000A /* WatchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000072 /* WatchBridge.swift */; };
 		AA000000000000000000000B /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000073 /* NotificationService.swift */; };
 		AA000000000000000000000C /* CaptureCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000074 /* CaptureCache.swift */; };
-		AA0000000000000000000020 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000075 /* KeychainService.swift */; };
-		AA0000000000000000000021 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000076 /* PrivacyInfo.xcprivacy */; };
-		AA0000000000000000000022 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000077 /* OnboardingView.swift */; };
 		AA000000000000000000000D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000064 /* Assets.xcassets */; };
 		AA000000000000000000000E /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000F0 /* WatchConnectivity.framework */; };
 		AA000000000000000000000F /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000F1 /* UserNotifications.framework */; };
@@ -34,10 +31,14 @@
 		AA0000000000000000000018 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000084 /* Assets.xcassets */; };
 		AA0000000000000000000019 /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000F2 /* WatchConnectivity.framework */; };
 		AA000000000000000000001A /* TerminalPulseWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A1 /* TerminalPulseWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AA0000000000000000000020 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000075 /* KeychainService.swift */; };
+		AA0000000000000000000021 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000076 /* PrivacyInfo.xcprivacy */; };
+		AA0000000000000000000022 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000077 /* OnboardingView.swift */; };
 		AA0000000000000000000030 /* StoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000053 /* StoreManager.swift */; };
 		AA0000000000000000000031 /* StoreManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000053 /* StoreManager.swift */; };
 		AA0000000000000000000032 /* DemoData.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000055 /* DemoData.swift */; };
 		AA0000000000000000000033 /* DemoData.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000055 /* DemoData.swift */; };
+		F4CCD3B92F672AA7008A3B7F /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F4CCD3B82F672AA7008A3B7F /* StoreKit.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,10 +51,27 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		AA000000000000000000001C /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				AA000000000000000000001A /* TerminalPulseWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		AA0000000000000000000050 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		AA0000000000000000000051 /* TerminalColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalColors.swift; sourceTree = "<group>"; };
 		AA0000000000000000000052 /* RunsRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunsRenderer.swift; sourceTree = "<group>"; };
+		AA0000000000000000000053 /* StoreManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreManager.swift; sourceTree = "<group>"; };
+		AA0000000000000000000054 /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
+		AA0000000000000000000055 /* DemoData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoData.swift; sourceTree = "<group>"; };
 		AA0000000000000000000060 /* TerminalPulseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalPulseApp.swift; sourceTree = "<group>"; };
 		AA0000000000000000000061 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		AA0000000000000000000062 /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
@@ -76,9 +94,8 @@
 		AA00000000000000000000F0 /* WatchConnectivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = System/Library/Frameworks/WatchConnectivity.framework; sourceTree = SDKROOT; };
 		AA00000000000000000000F1 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
 		AA00000000000000000000F2 /* WatchConnectivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = System/Library/Frameworks/WatchConnectivity.framework; sourceTree = SDKROOT; };
-		AA0000000000000000000053 /* StoreManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreManager.swift; sourceTree = "<group>"; };
-		AA0000000000000000000054 /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Products.storekit; sourceTree = "<group>"; };
-		AA0000000000000000000055 /* DemoData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoData.swift; sourceTree = "<group>"; };
+		F4CCD3B82F672AA7008A3B7F /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks/StoreKit.framework; sourceTree = DEVELOPER_DIR; };
+		F4D1C1152F5348F8009309C6 /* TerminalPulse.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TerminalPulse.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -86,6 +103,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F4CCD3B92F672AA7008A3B7F /* StoreKit.framework in Frameworks */,
 				AA000000000000000000000E /* WatchConnectivity.framework in Frameworks */,
 				AA000000000000000000000F /* UserNotifications.framework in Frameworks */,
 			);
@@ -129,6 +147,7 @@
 		AA00000000000000000000C2 /* TerminalPulse */ = {
 			isa = PBXGroup;
 			children = (
+				F4D1C1152F5348F8009309C6 /* TerminalPulse.entitlements */,
 				AA0000000000000000000060 /* TerminalPulseApp.swift */,
 				AA0000000000000000000061 /* ContentView.swift */,
 				AA0000000000000000000062 /* TerminalView.swift */,
@@ -177,6 +196,7 @@
 		AA00000000000000000000C9 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				F4CCD3B82F672AA7008A3B7F /* StoreKit.framework */,
 				AA00000000000000000000F0 /* WatchConnectivity.framework */,
 				AA00000000000000000000F1 /* UserNotifications.framework */,
 				AA00000000000000000000F2 /* WatchConnectivity.framework */,
@@ -187,17 +207,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		AA000000000000000000001C /* Embed Watch Content */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
-			dstSubfolderSpec = 16;
-			files = (
-				AA000000000000000000001A /* TerminalPulseWatch.app in Embed Watch Content */,
-			);
-			name = "Embed Watch Content";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		AA00000000000000000000D0 /* TerminalPulse */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = AA00000000000000000000E0 /* Build configuration list for PBXNativeTarget "TerminalPulse" */;
@@ -236,25 +245,22 @@
 		};
 /* End PBXNativeTarget section */
 
-/* Begin PBXTargetDependency section */
-		AA000000000000000000001D /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = AA00000000000000000000D1 /* TerminalPulseWatch */;
-			targetProxy = AA000000000000000000001B /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin PBXProject section */
 		AA00000000000000000000FF /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1520;
-				LastUpgradeCheck = 1520;
+				LastUpgradeCheck = 2620;
 				ORGANIZATIONNAME = "August Benedikt";
 				TargetAttributes = {
 					AA00000000000000000000D0 = {
 						CreatedOnToolsVersion = 15.2;
+						SystemCapabilities = {
+							com.apple.Push = {
+								enabled = 1;
+							};
+						};
 					};
 					AA00000000000000000000D1 = {
 						CreatedOnToolsVersion = 15.2;
@@ -341,6 +347,14 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		AA000000000000000000001D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA00000000000000000000D1 /* TerminalPulseWatch */;
+			targetProxy = AA000000000000000000001B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
 		AA00000000000000000000E3 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -376,7 +390,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = YRXM89L3ZW;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -398,6 +414,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -437,7 +454,9 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = YRXM89L3ZW;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -452,6 +471,7 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -459,19 +479,20 @@
 		AA00000000000000000000E5 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = TerminalPulse/TerminalPulse.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
-				DEVELOPMENT_TEAM = YRXM89L3ZW;
+				CURRENT_PROJECT_VERSION = 11;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TerminalPulse/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = tmuxonwatch;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "TerminalPulse uses the camera to scan QR codes during server setup.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "tmuxonwatch connects to your tmux server on your local network to display terminal output.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -479,32 +500,33 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.augustbenedikt.TerminalPulse;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
 		AA00000000000000000000E6 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = TerminalPulse/TerminalPulse.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
-				DEVELOPMENT_TEAM = YRXM89L3ZW;
+				CURRENT_PROJECT_VERSION = 11;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TerminalPulse/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = tmuxonwatch;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSCameraUsageDescription = "TerminalPulse uses the camera to scan QR codes during server setup.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "tmuxonwatch connects to your tmux server on your local network to display terminal output.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -512,13 +534,13 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.augustbenedikt.TerminalPulse;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -529,8 +551,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
-				DEVELOPMENT_TEAM = YRXM89L3ZW;
+				CURRENT_PROJECT_VERSION = 11;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = tmuxonwatch;
@@ -540,7 +561,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.augustbenedikt.TerminalPulse.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -557,8 +578,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
-				DEVELOPMENT_TEAM = YRXM89L3ZW;
+				CURRENT_PROJECT_VERSION = 11;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = tmuxonwatch;
@@ -568,7 +588,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.augustbenedikt.TerminalPulse.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;

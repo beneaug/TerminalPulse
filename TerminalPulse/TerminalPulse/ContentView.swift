@@ -35,6 +35,13 @@ struct ContentView: View {
                     },
                     onDemoLoaded: {
                         polling.startDemoAnimation()
+                    },
+                    onServerConnected: {
+                        if DemoData.isDemo {
+                            DemoData.deactivate()
+                            polling.stopDemoAnimation()
+                        }
+                        polling.fetchNow()
                     }
                 )
             }

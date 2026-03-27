@@ -1,6 +1,9 @@
 import SwiftUI
 
 enum RunsRenderer {
+    private static let maxRunsPerLine = 180
+    private static let maxCharsPerLine = 512
+
     /// Build per-line attributed strings for efficient LazyVStack rendering.
     static func buildLines(from lines: [[TerminalRun]], fontSize: CGFloat) -> [AttributedString] {
         let theme = TerminalColors.current
@@ -19,7 +22,29 @@ enum RunsRenderer {
                 return line
             }
 
-            for run in runs {
+            var remainingChars = maxCharsPerLine
+            var didTruncateLine = false
+
+            for run in runs.prefix(maxRunsPerLine) {
+                guard remainingChars > 0 else {
+                    didTruncateLine = true
+                    break
+                }
+
+                if run.t.isEmpty {
+                    continue
+                }
+
+                let text: String
+                if run.t.count <= remainingChars {
+                    text = run.t
+                    remainingChars -= run.t.count
+                } else {
+                    text = String(run.t.prefix(remainingChars))
+                    remainingChars = 0
+                    didTruncateLine = true
+                }
+
                 var attrs = AttributeContainer()
 
                 let weight: Font.Weight = (run.b == true) ? .bold : .regular
@@ -51,7 +76,18 @@ enum RunsRenderer {
                     attrs.underlineStyle = .single
                 }
 
-                line.append(AttributedString(Self.forceTextPresentation(run.t), attributes: attrs))
+                line.append(AttributedString(Self.forceTextPresentation(text), attributes: attrs))
+            }
+
+            if runs.count > maxRunsPerLine {
+                didTruncateLine = true
+            }
+
+            if didTruncateLine {
+                var truncAttrs = AttributeContainer()
+                truncAttrs.font = baseFont
+                truncAttrs.foregroundColor = defaultFG.opacity(0.65)
+                line.append(AttributedString(" [truncated]", attributes: truncAttrs))
             }
 
             return line

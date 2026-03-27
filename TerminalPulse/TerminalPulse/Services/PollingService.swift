@@ -20,6 +20,8 @@ final class PollingService {
     private var lastHash = ""
     private var cachedHostname: String?
     private var lastLineWasPrompt = true // Start true so first poll doesn't notify
+    private var lastPaneIDForCommandState: String?
+    private var lastPaneCommand: String?
     private var demoTask: Task<Void, Never>?
     private var lastDemoWatchSend: Date = .distantPast
     private var watchNeedsSync = true // Always send first successful poll to watch
@@ -32,6 +34,7 @@ final class PollingService {
     private var pollCompletionWaiters: [CheckedContinuation<Void, Never>] = []
     private var watchInputSyncTask: Task<Void, Never>?
     private var activeBackgroundPollTask: UIBackgroundTaskIdentifier = .invalid
+    private var started = false
 
     // Adaptive polling state
     private var consecutiveUnchanged = 0
@@ -43,6 +46,10 @@ final class PollingService {
     static var backgroundRefreshHandler: ((BGAppRefreshTask) -> Void)?
     private static let allowedTargetScalars = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_:.-%")
     private static let preferredWindowBaseDefaultsKey = "preferredWindowBaseBySession"
+    private static let shellLikeCommands: Set<String> = [
+        "sh", "bash", "zsh", "fish", "dash", "ash", "ksh", "csh", "tcsh",
+        "nu", "elvish", "xonsh", "pwsh"
+    ]
     private let logger = Logger(subsystem: "com.augustbenedikt.TerminalPulse", category: "PollingService")
 
     var pollInterval: TimeInterval {
@@ -77,6 +84,8 @@ final class PollingService {
     }
 
     func start() {
+        guard !started else { return }
+        started = true
         loadPreferredWindowBases()
         if DemoData.isDemo {
             startDemoAnimation()
@@ -96,6 +105,7 @@ final class PollingService {
         watchInputSyncTask?.cancel()
         watchInputSyncTask = nil
         endBackgroundPollTaskIfNeeded()
+        started = false
         if let powerStateObserver {
             NotificationCenter.default.removeObserver(powerStateObserver)
             self.powerStateObserver = nil
@@ -240,7 +250,7 @@ final class PollingService {
         fetchNow()
     }
 
-    /// Cycle to the next/previous tmux session and fetch immediately.
+    /// Swipe switch behavior: prefer tmux windows, fall back to sessions when needed.
     func switchSession(direction rawDirection: Int) async -> (Bool, String?) {
         let direction = rawDirection >= 0 ? 1 : -1
         do {
@@ -256,36 +266,54 @@ final class PollingService {
         let available = sessions.map(\.name)
         guard !available.isEmpty else { return (false, "No tmux sessions found") }
 
-        // Prefer the live pane session over selectedTarget so first swipe from default
-        // always advances/descends relative to what the user is currently seeing.
+        // Prefer the live pane session over selectedTarget so swipes advance relative
+        // to what is currently visible on the watch.
         let activeSession = currentPaneSession ?? Self.sessionName(fromTarget: selectedTarget) ?? selectedTarget
-
-        if available.count > 1 {
-            let nextTarget: String
-            if let activeSession, let currentIndex = available.firstIndex(of: activeSession) {
-                let wrapped = (currentIndex + direction + available.count) % available.count
-                nextTarget = available[wrapped]
-            } else {
-                nextTarget = direction > 0 ? available[0] : available[available.count - 1]
-            }
-
-            selectedTarget = nextTarget
-            await forceSwitchPoll()
-
-            if !isConnected {
-                return (false, errorMessage ?? "Unable to refresh capture")
-            }
-            if let currentPaneSession, currentPaneSession != nextTarget {
-                return (false, "Session did not change")
-            }
-            return (true, nil)
-        }
-
-        // Single-session mode: switch windows authoritatively on the server.
         let sessionName = activeSession ?? available[0]
         let sessionInfo = sessions.first(where: { $0.name == sessionName }) ?? sessions.first
         let sessionWindowCount = max(sessionInfo?.windows ?? 1, 1)
 
+        // Always try a window switch first. This keeps swipe behavior consistent even
+        // when multiple tmux sessions exist.
+        let windowResult = await switchWindowInSession(
+            sessionName: sessionName,
+            direction: direction,
+            sessionWindowCount: sessionWindowCount
+        )
+        if windowResult.0 {
+            return windowResult
+        }
+
+        // If the current session has only one window, fall back to switching sessions.
+        guard available.count > 1, isOnlyOneWindowError(windowResult.1) else {
+            return windowResult
+        }
+
+        let nextTarget: String
+        if let activeSession, let currentIndex = available.firstIndex(of: activeSession) {
+            let wrapped = (currentIndex + direction + available.count) % available.count
+            nextTarget = available[wrapped]
+        } else {
+            nextTarget = direction > 0 ? available[0] : available[available.count - 1]
+        }
+
+        selectedTarget = nextTarget
+        await forceSwitchPoll()
+
+        if !isConnected {
+            return (false, errorMessage ?? "Unable to refresh capture")
+        }
+        if let currentPaneSession, currentPaneSession != nextTarget {
+            return (false, "Session did not change")
+        }
+        return (true, nil)
+    }
+
+    private func switchWindowInSession(
+        sessionName: String,
+        direction: Int,
+        sessionWindowCount: Int
+    ) async -> (Bool, String?) {
         do {
             let previousWindow = currentPaneWindowIndex
             let response = try await api.switchWindow(direction: direction, target: sessionName)
@@ -320,6 +348,15 @@ final class PollingService {
         } catch {
             return (false, userFacingSwitchError(error.localizedDescription))
         }
+    }
+
+    private func isOnlyOneWindowError(_ message: String?) -> Bool {
+        guard let message else { return false }
+        let lower = message.lowercased()
+        return lower.contains("only 1 tmux window")
+            || lower.contains("no additional tmux windows")
+            || lower.contains("no additional tmux sessions or windows")
+            || lower.contains("no tmux sessions or windows")
     }
 
     private func userFacingSwitchError(_ message: String) -> String {
@@ -592,25 +629,29 @@ final class PollingService {
                 // Even if hash didn't change, sync to watch if it needs fresh data
                 if needsWatchSync {
                     watchNeedsSync = false
-                    let payload = WatchPayload.from(capture: capture, host: host)
+                    let payload = compactPayload(WatchPayload.from(capture: capture, host: host))
                     watchBridge?.send(payload: payload)
                 }
                 return
             }
 
             watchNeedsSync = false
-            let payload = WatchPayload.from(capture: capture, host: host)
+            let payload = compactPayload(WatchPayload.from(capture: capture, host: host))
             applyPayload(payload)
 
             // Save cache off the main thread to avoid disk I/O during scrolling
             let payloadCopy = payload
             Task.detached { CaptureCache.save(payloadCopy) }
 
-            // Detect command-finished: prompt appeared after non-prompt output
+            // Detect command-finished using both:
+            // 1) prompt reappears
+            // 2) tmux pane command transitions from non-shell -> shell
             let lastLine = lastNonEmptyLine(from: capture.parsedLines)
             let currentIsPrompt = NotificationService.isPromptLine(lastLine)
-            let commandFinished = !lastLineWasPrompt && currentIsPrompt
+            let commandFinishedByPrompt = !lastLineWasPrompt && currentIsPrompt
             lastLineWasPrompt = currentIsPrompt
+            let commandFinishedByCommandTransition = detectCommandFinishedByPaneCommand(capture.pane)
+            let commandFinished = commandFinishedByPrompt || commandFinishedByCommandTransition
 
             watchBridge?.send(payload: payload, commandFinished: commandFinished)
 
@@ -620,6 +661,7 @@ final class PollingService {
                 }
                 NotificationService.notifyCommandFinished(
                     session: pane.session,
+                    windowIndex: pane.winIndex,
                     window: pane.winName,
                     outputLines: allLines
                 )
@@ -656,6 +698,40 @@ final class PollingService {
         return ""
     }
 
+    private func detectCommandFinishedByPaneCommand(_ pane: PaneInfo?) -> Bool {
+        guard let pane else {
+            lastPaneIDForCommandState = nil
+            lastPaneCommand = nil
+            return false
+        }
+
+        let paneID = pane.paneId
+        let currentCommand = pane.paneCurrentCommand?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        defer {
+            lastPaneIDForCommandState = paneID
+            lastPaneCommand = currentCommand
+        }
+
+        guard lastPaneIDForCommandState == paneID,
+              let previous = lastPaneCommand,
+              let current = currentCommand else {
+            return false
+        }
+
+        return !Self.isShellLikeCommand(previous) && Self.isShellLikeCommand(current)
+    }
+
+    private static func isShellLikeCommand(_ rawCommand: String) -> Bool {
+        let trimmed = rawCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let firstToken = trimmed.split(separator: " ").first.map(String.init) ?? trimmed
+        let commandName = URL(fileURLWithPath: firstToken).lastPathComponent.lowercased()
+        return shellLikeCommands.contains(commandName)
+    }
+
     private func sanitizedTarget(_ raw: String?) -> String? {
         guard let raw else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -664,9 +740,72 @@ final class PollingService {
         return isValid ? trimmed : nil
     }
 
+    private static let maxPayloadLines = 120
+    private static let maxPayloadRunsPerLine = 180
+    private static let maxPayloadCharsPerLine = 512
+
+    /// Bound payload size to keep rendering/cache/WatchConnectivity stable.
+    private func compactPayload(_ payload: WatchPayload) -> WatchPayload {
+        var didTruncate = payload.runs.count > Self.maxPayloadLines
+        var compactRuns: [[TerminalRun]] = []
+        compactRuns.reserveCapacity(min(payload.runs.count, Self.maxPayloadLines))
+
+        for line in payload.runs.prefix(Self.maxPayloadLines) {
+            var remainingChars = Self.maxPayloadCharsPerLine
+            var compactLine: [TerminalRun] = []
+            compactLine.reserveCapacity(min(line.count, Self.maxPayloadRunsPerLine))
+
+            for run in line.prefix(Self.maxPayloadRunsPerLine) {
+                if remainingChars <= 0 {
+                    didTruncate = true
+                    break
+                }
+                if run.t.isEmpty {
+                    continue
+                }
+                if run.t.count <= remainingChars {
+                    compactLine.append(run)
+                    remainingChars -= run.t.count
+                } else {
+                    let clipped = String(run.t.prefix(remainingChars))
+                    compactLine.append(
+                        TerminalRun(t: clipped, fg: run.fg, bg: run.bg, b: run.b, d: run.d, i: run.i, u: run.u)
+                    )
+                    remainingChars = 0
+                    didTruncate = true
+                }
+            }
+
+            if line.count > Self.maxPayloadRunsPerLine {
+                didTruncate = true
+            }
+            compactRuns.append(compactLine)
+        }
+
+        if didTruncate {
+            if compactRuns.isEmpty {
+                compactRuns = [[TerminalRun(t: "[output truncated]")]]
+            } else {
+                compactRuns[compactRuns.count - 1].append(TerminalRun(t: " [output truncated]"))
+            }
+        }
+
+        return WatchPayload(
+            host: payload.host,
+            ts: payload.ts,
+            session: payload.session,
+            winIndex: payload.winIndex,
+            winName: payload.winName,
+            paneId: payload.paneId,
+            hash: payload.hash,
+            runs: compactRuns
+        )
+    }
+
     // MARK: - Power State
 
     private func observePowerState() {
+        guard powerStateObserver == nil else { return }
         powerStateObserver = NotificationCenter.default.addObserver(
             forName: .NSProcessInfoPowerStateDidChange,
             object: nil,

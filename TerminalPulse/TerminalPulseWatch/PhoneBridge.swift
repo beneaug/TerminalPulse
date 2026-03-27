@@ -23,6 +23,8 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     var isProUnlocked = false
     var sessionTransitionToken = 0
     var sessionTransitionDirection = 1
+    var switchedWindowLabel: String?
+    var switchedWindowFlashToken = 0
 
     private var session: WCSession?
     private var currentHash = ""
@@ -48,6 +50,7 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     private var pendingSessionSwitchResetTask: Task<Void, Never>?
     private var lastSwitchRequestAt: Date = .distantPast
     private var lastSessionIdentity = ""
+    private var windowFlashClearTask: Task<Void, Never>?
     private static let isoFormatter = ISO8601DateFormatter()
 
     override init() {
@@ -510,13 +513,14 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
 
         let fontSize = CGFloat(UserDefaults.standard.integer(forKey: "watchFontSize").clamped(to: 7...12, default: 10))
         renderedLines = RunsRenderer.buildLines(from: payload.runs, fontSize: fontSize)
-        let newSessionIdentity = "\(payload.session):\(payload.winName)"
+        let newSessionIdentity = "\(payload.session):\(payload.winIndex):\(payload.winName)"
         if !lastSessionIdentity.isEmpty, lastSessionIdentity != newSessionIdentity {
             let direction = pendingSessionSwitchDirection ?? 1
             sessionTransitionDirection = direction >= 0 ? 1 : -1
             sessionTransitionToken += 1
+            flashWindowIndex(payload.winIndex)
         }
-        sessionLabel = newSessionIdentity
+        sessionLabel = "\(payload.session):\(payload.winIndex) \(payload.winName)"
         lastSessionIdentity = newSessionIdentity
         pendingSessionSwitchResetTask?.cancel()
         pendingSessionSwitchDirection = nil
@@ -529,6 +533,17 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
             wasDisconnected = false
         }
         isConnected = true
+    }
+
+    private func flashWindowIndex(_ winIndex: Int) {
+        windowFlashClearTask?.cancel()
+        switchedWindowLabel = "#\(winIndex)"
+        switchedWindowFlashToken += 1
+        windowFlashClearTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(900))
+            guard let self, !Task.isCancelled else { return }
+            self.switchedWindowLabel = nil
+        }
     }
 
     private func flushDeferredUpdates() {
@@ -553,8 +568,8 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
 
         let fontSize = CGFloat(UserDefaults.standard.integer(forKey: "watchFontSize").clamped(to: 7...12, default: 10))
         renderedLines = RunsRenderer.buildLines(from: payload.runs, fontSize: fontSize)
-        sessionLabel = "\(payload.session):\(payload.winName)"
-        lastSessionIdentity = sessionLabel
+        sessionLabel = "\(payload.session):\(payload.winIndex) \(payload.winName)"
+        lastSessionIdentity = "\(payload.session):\(payload.winIndex):\(payload.winName)"
     }
 
     private func schedulePendingSessionDirectionReset() {
@@ -569,16 +584,24 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     // MARK: - Cache
 
     private static let cacheKey = "terminalpulse_cache"
+    private static let maxCacheBytes = 450_000
 
     private func saveCache(_ dict: [String: Any]) {
-        if let data = try? JSONSerialization.data(withJSONObject: dict) {
-            UserDefaults.standard.set(data, forKey: Self.cacheKey)
-        }
+        guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return }
+        guard data.count <= Self.maxCacheBytes else { return }
+        UserDefaults.standard.set(data, forKey: Self.cacheKey)
     }
 
     private func loadCache() {
-        guard let data = UserDefaults.standard.data(forKey: Self.cacheKey),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        guard let data = UserDefaults.standard.data(forKey: Self.cacheKey) else { return }
+        guard data.count <= Self.maxCacheBytes else {
+            UserDefaults.standard.removeObject(forKey: Self.cacheKey)
+            return
+        }
+        guard let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            UserDefaults.standard.removeObject(forKey: Self.cacheKey)
+            return
+        }
         handlePayload(dict)
     }
 

@@ -19,7 +19,7 @@ final class StoreManager {
     /// Called when pro status changes — iPhone uses this to sync to watch.
     var onProStatusChanged: ((Bool) -> Void)?
 
-    static let proProductID = "com.tmuxonwatch.pro"
+    static let proProductID = "tmuxonwatchpro"
 
     enum PurchaseState: Equatable {
         case idle
@@ -35,7 +35,7 @@ final class StoreManager {
             await self?.listenForTransactions()
         }
         Task { [weak self] in
-            await self?.loadProducts()
+            await self?.loadProductsWithRetry()
             await self?.checkEntitlement()
         }
     }
@@ -46,6 +46,17 @@ final class StoreManager {
             proProduct = products.first
         } catch {
             // Products unavailable — StoreKit config may not be set up yet
+        }
+    }
+
+    private func loadProductsWithRetry(maxAttempts: Int = 3) async {
+        guard maxAttempts > 0 else { return }
+        for attempt in 1...maxAttempts {
+            await loadProducts()
+            if proProduct != nil { return }
+            if attempt < maxAttempts {
+                try? await Task.sleep(for: .seconds(Double(attempt)))
+            }
         }
     }
 
@@ -61,8 +72,11 @@ final class StoreManager {
     }
 
     func purchase() async {
+        if proProduct == nil {
+            await loadProductsWithRetry(maxAttempts: 2)
+        }
         guard let product = proProduct else {
-            purchaseState = .failed("Product not available")
+            purchaseState = .failed("Product not available yet. Try again in a moment.")
             return
         }
 
@@ -89,6 +103,9 @@ final class StoreManager {
     }
 
     func restore() async {
+        if proProduct == nil {
+            await loadProductsWithRetry(maxAttempts: 2)
+        }
         try? await AppStore.sync()
         await checkEntitlement()
     }

@@ -16,6 +16,8 @@ struct WatchTerminalView: View {
                 bridge.switchSession(direction: direction)
             }
 
+            WatchWindowSwitchOverlay(bridge: bridge)
+
             WatchStatusOverlay(bridge: bridge)
 
             if bridge.isProUnlocked {
@@ -50,29 +52,29 @@ private struct WatchTerminalContent: View {
     let bridge: PhoneBridge
     var onSessionSwipe: ((Int) -> Void)?
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
-    @State private var contentID = UUID()
-    @State private var insertionEdge: Edge = .trailing
-    @State private var removalEdge: Edge = .leading
-    private let swipeMinDistance: CGFloat = 20
-    private let swipeAxisRatio: CGFloat = 1.15
+    @State private var switchOffsetX: CGFloat = 0
+    @State private var switchOpacity: Double = 1
+    @State private var pendingScrollTask: Task<Void, Never>?
+    private let swipeMinDistance: CGFloat = 14
+    private let swipeAxisRatio: CGFloat = 1.05
 
     var body: some View {
-        ZStack {
-            terminalBody
-                .id(contentID)
-                .transition(
-                    .asymmetric(
-                        insertion: .move(edge: insertionEdge).combined(with: .opacity),
-                        removal: .move(edge: removalEdge).combined(with: .opacity)
-                    )
-                )
+        terminalBody
+            .offset(x: switchOffsetX)
+            .opacity(switchOpacity)
+        .onDisappear {
+            pendingScrollTask?.cancel()
+            pendingScrollTask = nil
         }
-        .animation(.easeInOut(duration: 0.22), value: contentID)
         .onChange(of: bridge.sessionTransitionToken) {
             let direction = bridge.sessionTransitionDirection >= 0 ? 1 : -1
-            insertionEdge = direction > 0 ? .trailing : .leading
-            removalEdge = direction > 0 ? .leading : .trailing
-            contentID = UUID()
+            let startOffset: CGFloat = direction > 0 ? 12 : -12
+            switchOffsetX = startOffset
+            switchOpacity = 0.84
+            withAnimation(.easeOut(duration: 0.18)) {
+                switchOffsetX = 0
+                switchOpacity = 1
+            }
         }
         .simultaneousGesture(
             DragGesture(minimumDistance: swipeMinDistance, coordinateSpace: .local)
@@ -138,6 +140,9 @@ private struct WatchTerminalContent: View {
                 .onChange(of: bridge.renderedLines.count) {
                     scrollToBottom(proxy)
                 }
+                .onChange(of: bridge.sessionTransitionToken) {
+                    scrollToBottom(proxy, settleDelayMs: 40)
+                }
                 .onChange(of: isLuminanceReduced) { _, reduced in
                     if !reduced {
                         scrollToBottom(proxy)
@@ -147,15 +152,51 @@ private struct WatchTerminalContent: View {
         }
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+    private func scrollToBottom(_ proxy: ScrollViewProxy, settleDelayMs: Int = 0) {
         guard !isLuminanceReduced else { return }
-        Task { @MainActor in
+        pendingScrollTask?.cancel()
+        pendingScrollTask = Task { @MainActor in
             await Task.yield()
+            guard !Task.isCancelled else { return }
+            if settleDelayMs > 0 {
+                try? await Task.sleep(for: .milliseconds(settleDelayMs))
+                guard !Task.isCancelled else { return }
+            }
             proxy.scrollTo("bottom", anchor: .bottom)
             try? await Task.sleep(for: .milliseconds(60))
-            guard !isLuminanceReduced else { return }
+            guard !Task.isCancelled, !isLuminanceReduced else { return }
+            proxy.scrollTo("bottom", anchor: .bottom)
+            try? await Task.sleep(for: .milliseconds(140))
+            guard !Task.isCancelled, !isLuminanceReduced else { return }
             proxy.scrollTo("bottom", anchor: .bottom)
         }
+    }
+}
+
+private struct WatchWindowSwitchOverlay: View {
+    let bridge: PhoneBridge
+
+    var body: some View {
+        ZStack {
+            if let label = bridge.switchedWindowLabel {
+                Text(label)
+                    .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.95))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(0.55))
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    )
+                    .transition(.scale(scale: 0.9).combined(with: .opacity))
+                    .id(bridge.switchedWindowFlashToken)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .allowsHitTesting(false)
+        .animation(.easeOut(duration: 0.2), value: bridge.switchedWindowFlashToken)
     }
 }
 

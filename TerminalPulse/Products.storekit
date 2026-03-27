@@ -15,7 +15,7 @@
           "locale" : "en_US"
         }
       ],
-      "productID" : "com.tmuxonwatch.pro",
+      "productID" : "tmuxonwatchpro",
       "referenceName" : "Pro — Watch Input",
       "type" : "NonConsumable"
     }

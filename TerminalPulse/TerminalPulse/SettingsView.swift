@@ -4,7 +4,7 @@ import AVFoundation
 struct SettingsView: View {
     @AppStorage("serverURL") private var serverURL = "http://127.0.0.1:8787"
     @AppStorage("pollInterval") private var pollInterval = 2
-    @AppStorage("notificationsEnabled") private var notificationsEnabled = true
+    @AppStorage("remotePushEnabled") private var remotePushEnabled = false
     @AppStorage("fontSize") private var fontSize = 11
     @AppStorage("watchFontSize") private var watchFontSize = 10
     @AppStorage("colorTheme") private var colorTheme = "default"
@@ -17,11 +17,14 @@ struct SettingsView: View {
     @State private var showResetConfirm = false
     @State private var isScanning = false
     @State private var showCameraDeniedAlert = false
+    @State private var remotePushStatus: String?
+    @State private var isTestingRemotePush = false
 
     var watchReachable: Bool
     var onPollIntervalChanged: (() -> Void)?
     var onAppearanceChanged: (() -> Void)?
     var onDemoLoaded: (() -> Void)?
+    var onServerConnected: (() -> Void)?
 
     var body: some View {
         Form {
@@ -108,18 +111,86 @@ struct SettingsView: View {
             }
 
             Section {
-                Toggle("Command Finished Alerts", isOn: $notificationsEnabled)
-                    .onChange(of: notificationsEnabled) { _, on in
-                        if on { NotificationService.requestPermission() }
+                Text("Optional. Enables cloud relay delivery for webhook-triggered push alerts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle("Enable Remote Push", isOn: $remotePushEnabled)
+                    .onChange(of: remotePushEnabled) { _, on in
+                        if on {
+                            NotificationService.requestPermission()
+                            Task { await NotificationService.registerDeviceWithRelayIfPossible(force: true) }
+                        } else {
+                            Task { await NotificationService.unregisterDeviceFromRelayIfPossible() }
+                        }
                     }
 
-                if notificationsEnabled {
-                    Text("Notifies when a command finishes (prompt reappears). Buzzes on Apple Watch.")
+                if let token = NotificationService.notifyToken() {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("WEBHOOK URL")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Text(NotificationService.webhookURLString())
+                            .font(.system(size: 12, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("TOKEN")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Text(token)
+                            .font(.system(size: 12, design: .monospaced))
+                            .textSelection(.enabled)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.8)
+                    }
+
+                    if let curlExample = NotificationService.curlExample() {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            Text(curlExample)
+                                .font(.system(size: 12, design: .monospaced))
+                                .textSelection(.enabled)
+                                .padding(10)
+                                .background(Color.secondary.opacity(0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+
+                        Button {
+                            UIPasteboard.general.string = curlExample
+                            remotePushStatus = "cURL example copied."
+                        } label: {
+                            Label("Copy cURL Example", systemImage: "doc.on.doc")
+                        }
+                    }
+
+                    Button {
+                        runRemotePushTest()
+                    } label: {
+                        HStack {
+                            if isTestingRemotePush {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            }
+                            Text(isTestingRemotePush ? "Sending..." : "Send Test Push")
+                        }
+                    }
+                    .disabled(isTestingRemotePush)
+                } else {
+                    Text("No webhook token configured yet. Re-run installer and scan the QR code to auto-configure remote push.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                if let remotePushStatus {
+                    Text(remotePushStatus)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
             } header: {
-                Text("Notifications")
+                Text("Remote Push (Webhook)")
+            } footer: {
+                Text("Use this endpoint from scripts, hooks, or CI to deliver reliable APNs alerts.")
             }
 
             Section {
@@ -215,7 +286,7 @@ struct SettingsView: View {
                 HStack {
                     Text("Version")
                     Spacer()
-                    Text("\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"))")
+                    Text(displayVersion)
                         .foregroundStyle(.secondary)
                         .font(.system(size: 14, design: .monospaced))
                 }
@@ -228,6 +299,23 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+    }
+
+    private var displayVersion: String {
+        let info = Bundle.main.infoDictionary
+        let short = (info?["CFBundleShortVersionString"] as? String ?? "?").trimmingCharacters(in: .whitespacesAndNewlines)
+        let build = (info?["CFBundleVersion"] as? String ?? "?").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let parts = short.split(separator: ".")
+        if parts.count >= 3 {
+            var replaced = parts.map(String.init)
+            replaced[replaced.count - 1] = build
+            return replaced.joined(separator: ".")
+        }
+        if parts.count >= 1 {
+            return "\(short).\(build)"
+        }
+        return short
     }
 
     // MARK: - Pro Upgrade
@@ -296,8 +384,14 @@ struct SettingsView: View {
                     // Non-auth API failures still indicate the token passed auth.
                     authLabel = "auth: ok (tmux unavailable)"
                 }
+                await refreshRemoteConfigFromServer(api: api)
                 testResult = "\(health.hostname) — tmux: \(health.tmux ? "yes" : "no") — \(authLabel)"
                 testSuccess = true
+                if DemoData.isDemo {
+                    DemoData.deactivate()
+                    CaptureCache.clear()
+                }
+                onServerConnected?()
             } catch {
                 testResult = error.localizedDescription
                 testSuccess = false
@@ -326,9 +420,9 @@ struct SettingsView: View {
 
     private func handleQRResult(_ json: String) {
         guard let data = json.data(using: .utf8),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String],
-              let url = dict["url"],
-              let token = dict["token"] else {
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let url = dict["url"] as? String,
+              let token = dict["token"] as? String else {
             testResult = "QR code not recognized"
             testSuccess = false
             return
@@ -336,7 +430,45 @@ struct SettingsView: View {
         serverURL = url
         authToken = token
         _ = KeychainService.save(key: "authToken", value: token)
-        testResult = "Credentials loaded from QR"
+        NotificationService.applyRemoteConfig(NotificationService.remoteConfig(from: dict))
+        testResult = "Credentials loaded from QR. Testing..."
         testSuccess = true
+        testConnection()
+    }
+
+    private func runRemotePushTest() {
+        isTestingRemotePush = true
+        remotePushStatus = nil
+        Task {
+            do {
+                do {
+                    try await NotificationService.sendTestWebhook()
+                } catch {
+                    // Token may be stale/missing after older QR flows; refresh once and retry.
+                    await refreshRemoteConfigFromServer(api: APIClient())
+                    try await NotificationService.sendTestWebhook()
+                }
+                remotePushStatus = "Test push sent."
+            } catch {
+                remotePushStatus = error.localizedDescription
+            }
+            isTestingRemotePush = false
+        }
+    }
+
+    private func refreshRemoteConfigFromServer(api: APIClient) async {
+        do {
+            let config = try await api.fetchNotifyConfig()
+            NotificationService.applyRemoteConfig(
+                .init(
+                    notifyToken: config.notifyToken,
+                    notifyWebhookURL: config.notifyWebhookURL,
+                    notifyRegisterURL: config.notifyRegisterURL,
+                    notifyUnregisterURL: config.notifyUnregisterURL
+                )
+            )
+        } catch {
+            // Ignore missing/stale server support; QR/manual config may still provide values.
+        }
     }
 }

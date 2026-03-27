@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 _TARGET_RE = re.compile(r"^[a-zA-Z0-9_:.\-%]+$")
 _TIMEOUT = 5.0
+_SEP = "\x1f"  # Unit Separator: unlikely to appear in tmux names/commands
 
 
 def _validate_target(target: str | None) -> str | None:
@@ -37,6 +38,7 @@ class PaneInfo:
     window_index: int
     window_name: str
     pane_id: str
+    pane_current_command: str
 
 
 async def capture_pane(lines: int = 80, target: str | None = None) -> str:
@@ -55,14 +57,20 @@ async def capture_pane(lines: int = 80, target: str | None = None) -> str:
 async def get_pane_info(target: str | None = None) -> PaneInfo:
     """Get info about the current or specified tmux pane."""
     _validate_target(target)
-    fmt = "#{session_name}|#{window_index}|#{window_name}|#{pane_id}"
+    fmt = _SEP.join([
+        "#{session_name}",
+        "#{window_index}",
+        "#{window_name}",
+        "#{pane_id}",
+        "#{pane_current_command}",
+    ])
     cmd = ["tmux", "display-message", "-p"]
     if target:
         cmd.extend(["-t", target])
     cmd.append(fmt)
     out = (await _run(*cmd)).strip()
-    parts = out.split("|", 3)
-    if len(parts) < 4:
+    parts = out.split(_SEP, 4)
+    if len(parts) < 5:
         raise RuntimeError(f"Unexpected tmux display-message output: {out!r}")
     try:
         win_idx = int(parts[1])
@@ -73,6 +81,7 @@ async def get_pane_info(target: str | None = None) -> PaneInfo:
         window_index=win_idx,
         window_name=parts[2],
         pane_id=parts[3],
+        pane_current_command=parts[4],
     )
 
 

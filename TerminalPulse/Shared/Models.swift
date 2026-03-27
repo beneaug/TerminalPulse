@@ -8,11 +8,26 @@ struct HealthResponse: Codable {
     let tmux: Bool
 }
 
+struct NotifyConfigResponse: Codable {
+    let notifyToken: String?
+    let notifyWebhookURL: String?
+    let notifyRegisterURL: String?
+    let notifyUnregisterURL: String?
+
+    enum CodingKeys: String, CodingKey {
+        case notifyToken = "notify_token"
+        case notifyWebhookURL = "notify_webhook_url"
+        case notifyRegisterURL = "notify_register_url"
+        case notifyUnregisterURL = "notify_unregister_url"
+    }
+}
+
 struct PaneInfo: Codable {
     let session: String
     let winIndex: Int
     let winName: String
     let paneId: String
+    let paneCurrentCommand: String?
 }
 
 struct CaptureResponse: Codable {

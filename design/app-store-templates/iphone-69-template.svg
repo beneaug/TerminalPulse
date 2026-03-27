@@ -1,0 +1,49 @@
+<svg width="1320" height="2868" viewBox="0 0 1320 2868" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect id="background" width="1320" height="2868" fill="#F2CE3B"/>
+
+  <g id="guides" opacity="0.85">
+    <rect x="66" y="66" width="1188" height="2736" stroke="#101114" stroke-opacity="0.20" stroke-dasharray="14 14"/>
+    <rect x="92" y="112" width="736" height="402" stroke="#101114" stroke-opacity="0.20" stroke-dasharray="10 10"/>
+  </g>
+
+  <g id="copy">
+    <text x="92" y="238" fill="#101114" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="122" font-weight="700" letter-spacing="-22">LIVE TMUX.</text>
+    <text x="92" y="348" fill="#101114" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="122" font-weight="700" letter-spacing="-22">ON WRIST.</text>
+    <text x="92" y="426" fill="#101114" fill-opacity="0.80" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="46" font-weight="400" letter-spacing="-16">Track your active pane.</text>
+    <text x="92" y="486" fill="#101114" fill-opacity="0.80" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="46" font-weight="400" letter-spacing="-16">See output in seconds.</text>
+  </g>
+
+  <g id="iphone-main">
+    <rect x="532" y="514" width="722" height="2220" rx="112" fill="#0F0F12"/>
+    <rect x="588" y="636" width="610" height="1974" rx="74" fill="#171A26"/>
+    <rect x="792" y="672" width="204" height="46" rx="23" fill="#262B3A"/>
+
+    <rect id="iphone-screen-placeholder" x="624" y="718" width="538" height="1736" rx="58" fill="#0B1220" stroke="#4B5563" stroke-opacity="0.45" stroke-dasharray="14 10"/>
+
+    <rect x="658" y="786" width="242" height="16" rx="8" fill="#22C55E" fill-opacity="0.85"/>
+    <rect x="658" y="826" width="428" height="12" rx="6" fill="#34D399" fill-opacity="0.45"/>
+    <rect x="658" y="880" width="472" height="2" fill="#374151"/>
+    <rect x="658" y="934" width="170" height="10" rx="5" fill="#D1D5DB" fill-opacity="0.34"/>
+    <rect x="658" y="966" width="352" height="10" rx="5" fill="#D1D5DB" fill-opacity="0.26"/>
+    <rect x="658" y="1012" width="420" height="10" rx="5" fill="#D1D5DB" fill-opacity="0.26"/>
+
+    <text x="893" y="1598" text-anchor="middle" fill="#F8FAFC" fill-opacity="0.78" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="37" font-weight="700" letter-spacing="-2">DROP IPHONE SCREENSHOT</text>
+    <text x="893" y="1652" text-anchor="middle" fill="#F8FAFC" fill-opacity="0.55" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="27" font-weight="400">mask to rounded screen area</text>
+  </g>
+
+  <g id="watch-secondary">
+    <rect x="100" y="1146" width="372" height="454" rx="96" fill="#0F0F12"/>
+    <rect x="132" y="1188" width="308" height="338" rx="68" fill="#000000"/>
+    <circle cx="476" cy="1368" r="21" fill="#5C616D"/>
+    <rect x="468" y="1290" width="12" height="54" rx="6" fill="#5C616D"/>
+
+    <rect id="watch-screen-placeholder" x="146" y="1204" width="280" height="308" rx="58" fill="#0B1220" stroke="#4B5563" stroke-opacity="0.45" stroke-dasharray="10 8"/>
+    <rect x="168" y="1246" width="118" height="10" rx="5" fill="#22C55E" fill-opacity="0.82"/>
+    <rect x="168" y="1274" width="182" height="8" rx="4" fill="#34D399" fill-opacity="0.42"/>
+
+    <text x="286" y="1356" text-anchor="middle" fill="#F8FAFC" fill-opacity="0.72" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="21" font-weight="700" letter-spacing="-1">DROP WATCH</text>
+    <text x="286" y="1385" text-anchor="middle" fill="#F8FAFC" fill-opacity="0.58" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="18" font-weight="400">screenshot</text>
+  </g>
+
+  <text x="92" y="2778" fill="#101114" fill-opacity="0.70" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="41" font-weight="700" letter-spacing="-8">Template: 6.9&quot; hero layout (watch + iPhone)</text>
+</svg>

@@ -182,6 +182,15 @@ actor APIClient {
         return try JSONDecoder().decode(HealthResponse.self, from: data)
     }
 
+    func fetchNotifyConfig() async throws -> NotifyConfigResponse {
+        let req = try request(path: "/notify-config")
+        let (data, http) = try await dataWithDirectFallback(for: req)
+        guard http.statusCode == 200 else {
+            throw APIError.badStatus(http.statusCode, statusDetail(from: data))
+        }
+        return try JSONDecoder().decode(NotifyConfigResponse.self, from: data)
+    }
+
     func fetchSessions() async throws -> SessionsResponse {
         let req = try request(path: "/sessions")
         let (data, http) = try await dataWithDirectFallback(for: req)
