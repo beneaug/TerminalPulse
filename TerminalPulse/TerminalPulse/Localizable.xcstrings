@@ -1,0 +1,735 @@
+{
+  "sourceLanguage" : "en",
+  "version" : "1.0",
+  "strings" : {
+    "Terminal connection changed. Refresh the terminal and reopen input before sending. If this continues, update both apps." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "ターミナルの接続が変更されました。送信する前にターミナルを更新し、入力画面を開き直してください。問題が続く場合は両方のアプリをアップデートしてください。"}}}},
+    "Protect screen previews" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "画面プレビューを保護"}}}},
+    "Hide notification details" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "通知の詳細を隠す"}}}},
+    "Privacy" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "プライバシー"}}}},
+    "Screen preview hidden" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "画面プレビューは非表示です"}}}},
+    "Command finished" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "コマンドが終了しました"}}}},
+    "Open tmuxonwatch to view your terminal." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "tmuxonwatch を開いてターミナルを確認してください。"}}}},
+    "%1$@:%2$lld %3$@ finished" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "%1$@:%2$lld %3$@ が終了しました"}}}},
+    "Ready for input." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "入力できます。"}}}},
+    "Screen protection hides the app when inactive, including app-switcher previews, and syncs to Apple Watch. New local completion alerts hide session names and output. Remote alerts are controlled at their source; this setting cannot redact remote notifications already sent to your phone." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "画面保護を有効にすると、非アクティブ時のアプリ画面やアプリスイッチャーのプレビューが非表示になり、Apple Watch にも同期されます。新しいローカルの完了通知ではセッション名と出力を隠します。リモート通知の内容は送信元で管理されるため、この設定で送信済みのリモート通知を編集することはできません。"}}}},
+    "Server saved" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "サーバーを保存しました"}}}},
+    "Continue" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "続ける"}}}},
+    "Open the Watch app to check its connection. Remote notifications require separate setup in Settings." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "Watch アプリを開いて接続を確認してください。リモート通知は設定で別途設定する必要があります。"}}}},
+    "APNs accepted %1$lld; %2$lld failed. Device delivery is not confirmed." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "APNs が %1$lld 件を受け付け、%2$lld 件が失敗しました。端末への配信は確認できていません。"}}}},
+    "No registered devices. Enable Remote Push and notification permission, then try again." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "登録済みの端末がありません。リモートプッシュと通知の許可を有効にして、もう一度お試しください。"}}}},
+    "APNs accepted no notifications. Check the relay configuration and device registration." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "APNs に受け付けられた通知はありません。リレーの設定と端末の登録を確認してください。"}}}},
+    "Relay accepted the request but did not confirm APNs acceptance. Check your device before testing again." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "リレーはリクエストを受け付けましたが、APNs の受付は確認できません。再テスト前に端末を確認してください。"}}}},
+    "The result is unconfirmed. Check your device before testing again." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "結果は未確認です。再テスト前に端末を確認してください。"}}}},
+    "Server reachable; authentication passed. Start a tmux session with tmux new -s work (install tmux if needed)." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "サーバーに接続でき、認証に成功しました。tmux new -s work でセッションを開始してください（必要なら tmux をインストールしてください）。"}}}},
+    "Server reachable; authentication passed. Start a session on the server with tmux new -s work, then test again." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "サーバーに接続でき、認証に成功しました。サーバーで tmux new -s work を実行してセッションを開始し、再テストしてください。"}}}},
+    "Server reachable; authentication passed; session found. First output could not be read. Check the session and test again." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "サーバー接続、認証、セッション確認に成功しました。最初の出力を読み取れませんでした。セッションを確認して再テストしてください。"}}}},
+    "Server reachable; authentication passed; session found; first output received." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "サーバー接続、認証、セッション確認に成功し、最初の出力を受信しました。"}}}},
+    "Connection details changed. Test again." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続情報が変更されました。もう一度テストしてください。" } } } },
+    "Could not save the token securely. Please try again." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "トークンを安全に保存できませんでした。もう一度お試しください。" } } } },
+    "Read & Find" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "読む・検索" } } } },
+    "Input" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "入力" } } } },
+    "YOUR WORKSPACE" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "ワークスペース" } } } },
+    "Choose a session" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "セッションを選択" } } } },
+    "Following tmux focus" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "tmux のフォーカスに追従" } } } },
+    "Pinned target" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "固定した接続先" } } } },
+    "Preview" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "プレビュー" } } } },
+    "Live" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "ライブ" } } } },
+    "Reconnecting" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "再接続中" } } } },
+    "Watch connected" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "Watch 接続中" } } } },
+    "Watch on standby" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "Watch 待機中" } } } },
+    "Last checked %@" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "最終確認 %@" } } } },
+    "Your terminal, within reach" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "ターミナルを、いつも身近に" } } } },
+    "Connect your Mac in Settings, or explore the demo. Your watch will follow along." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "設定で Mac に接続するか、デモをお試しください。Watch にも出力が表示されます。" } } } },
+    "Try the demo" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "デモを試す" } } } },
+    "Reading snapshot" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "スナップショットを表示中" } } } },
+    "%lld matching lines" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "一致する行：%lld" } } } },
+    "The live stream continues on your watch." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "Watch のライブ更新は続きます。" } } } },
+    "Find in output" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "出力を検索" } } } },
+    "Done" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "完了" } } } },
+    "Share snapshot" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "スナップショットを共有" } } } },
+    "No terminal connected" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "ターミナル未接続" } } } },
+    "Send text to this pane, then press Return when you’re ready to run it." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "このペインにテキストを送り、実行する準備ができたら Return を押します。" } } } },
+    "Input preview" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "入力プレビュー" } } } },
+    "Explore the composer. Connect a terminal and unlock Pro to send input." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "入力画面をお試しください。送信するにはターミナルに接続し、Pro を購入してください。" } } } },
+    "Compose" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "入力" } } } },
+    "Type a command or reply" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "コマンドや返信を入力" } } } },
+    "Sending…" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "送信中…" } } } },
+    "Send text" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "テキストを送信" } } } },
+    "Return" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "Return" } } } },
+    "Escape" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "Escape" } } } },
+    "Ctrl-C" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "Ctrl-C" } } } },
+    "Save as shortcut" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "ショートカットとして保存" } } } },
+    "Your shortcuts" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "ショートカット" } } } },
+    "Saved on this iPhone. Choosing a shortcut fills the composer; it never runs automatically." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "この iPhone に保存されます。選ぶと入力欄に挿入されますが、自動では実行されません。" } } } },
+    "Reply from either screen" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "どちらの画面からも返信" } } } },
+    "Keep an eye on your work for free. With Pro, send input from your wrist or iPhone and keep your frequently used commands close." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "作業の見守りは無料です。Pro なら手首や iPhone から入力を送り、よく使うコマンドを保存できます。" } } } },
+    "Terminal input" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "ターミナル入力" } } } },
+    "Text sent. Press Return to run." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "送信しました。実行するには Return を押してください。" } } } },
+    "Key sent." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "キーを送信しました。" } } } },
+    "Pin a session or window to keep it on your phone and watch." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "セッションやウインドウを固定すると、iPhone と Watch で同じ接続先を表示できます。" } } } },
+    "Attached" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続中" } } } },
+    "Running" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "実行中" } } } },
+    "Active window" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "アクティブなウインドウ" } } } },
+    "Window" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "ウインドウ" } } } },
+    "Sessions" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "セッション" } } } },
+    "Refresh pace" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "更新間隔" } } } },
+    "Updates quickly while output changes, then eases back when quiet. Raising your wrist requests fresh output." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "出力が変化している間はすばやく更新し、落ち着くと間隔を広げます。手首を上げると最新の出力を要求します。" } } } },
+    "Command finished alerts" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "コマンド完了通知" } } } },
+    "Reply from your Apple Watch or iPhone. Dictate, send keys, and save your frequently used commands on iPhone." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "Apple Watch や iPhone から返信。音声入力やキー送信に加え、よく使うコマンドを iPhone に保存できます。" } } } },
+    "Unlock Pro" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "Pro を購入" } } } },
+    "One purchase. Yours to keep. Live viewing, Read & Find, and sharing stay free." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "一度の購入でずっと使えます。ライブ表示、検索、共有は引き続き無料です。" } } } },
+    "Fresh output when you check in" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "確認するときに新しい出力を" } } } },
+    "Line breaks can run commands immediately. Send one line at a time." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "改行を送ると、すぐにコマンドが実行されることがあります。1 行ずつ送信してください。" } } } },
+    "Terminal" : {
+      "comment" : "Tab title for the terminal view",
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ターミナル" } }
+      }
+    },
+    "Settings" : {
+      "comment" : "Settings tab and screen title",
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "設定" } }
+      }
+    },
+    "Back" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "戻る" } }
+      }
+    },
+    "Skip" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "スキップ" } }
+      }
+    },
+    "Next: Connect" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "次へ：接続" } }
+      }
+    },
+    "Try Demo" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デモを試す" } }
+      }
+    },
+    "Install the Server" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サーバーをインストール" } }
+      }
+    },
+    "Run this on the Mac where tmux is running:" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "tmux を実行している Mac で次のコマンドを実行：" } }
+      }
+    },
+    "The installer sets up Python, generates a secure token, and starts the server." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "インストーラが Python をセットアップし、セキュアなトークンを生成してサーバーを起動します。" } }
+      }
+    },
+    "Connect to Server" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サーバーに接続" } }
+      }
+    },
+    "Scan the QR code from the install script, or enter details manually." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "インストールスクリプトの QR コードを読み取るか、手動で入力してください。" } }
+      }
+    },
+    "Scan QR Code" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "QR コードを読み取る" } }
+      }
+    },
+    "Camera Access Required" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "カメラへのアクセスが必要です" } }
+      }
+    },
+    "Open Settings" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "設定を開く" } }
+      }
+    },
+    "Cancel" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "キャンセル" } }
+      }
+    },
+    "tmuxonwatch needs camera access to scan the QR code. Enable it in Settings." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "QR コードを読み取るには tmuxonwatch がカメラにアクセスする必要があります。設定から有効にしてください。" } }
+      }
+    },
+    "SERVER URL" : {
+      "comment" : "Section label for server URL field",
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サーバー URL" } }
+      }
+    },
+    "AUTH TOKEN" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "認証トークン" } }
+      }
+    },
+    "Paste token here" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "トークンを貼り付け" } }
+      }
+    },
+    "Token" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "トークン" } }
+      }
+    },
+    "Test Connection" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続をテスト" } }
+      }
+    },
+    "Testing..." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "テスト中…" } }
+      }
+    },
+    "Connected!" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続できました！" } }
+      }
+    },
+    "Retry" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "再試行" } }
+      }
+    },
+    "You're Connected!" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続完了！" } }
+      }
+    },
+    "tmuxonwatch will poll your tmux session and push live output to your Apple Watch." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "tmuxonwatch が tmux セッションをポーリングし、ライブ出力を Apple Watch に届けます。" } }
+      }
+    },
+    "Live terminal on your wrist" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "手首にライブターミナル" } }
+      }
+    },
+    "Notifications when commands finish" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "コマンド完了時に通知" } }
+      }
+    },
+    "Auto-refreshes in background" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "バックグラウンドで自動更新" } }
+      }
+    },
+    "Start Watching" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "見はじめる" } }
+      }
+    },
+    "Copy install command" : {
+      "comment" : "Accessibility label",
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "インストールコマンドをコピー" } }
+      }
+    },
+    "Server URL" : {
+      "comment" : "Accessibility label for server URL field",
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サーバー URL" } }
+      }
+    },
+    "Authentication token" : {
+      "comment" : "Accessibility label",
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "認証トークン" } }
+      }
+    },
+    "Step %lld of 3" : {
+      "comment" : "Onboarding progress accessibility label",
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ステップ %lld / 3" } }
+      }
+    },
+    "Connection error: %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続エラー：%@" } }
+      }
+    },
+    "QR code not recognized. Scan the code from the install script." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "QR コードを認識できません。インストールスクリプトの QR コードを読み取ってください。" } }
+      }
+    },
+    "QR code not recognized" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "QR コードを認識できません" } }
+      }
+    },
+    "Credentials loaded from QR. Testing..." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "QR から認証情報を読み込みました。テスト中…" } }
+      }
+    },
+
+    "Connection" : {
+      "comment" : "Settings section header",
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続" } }
+      }
+    },
+    "Polling" : {
+      "comment" : "Settings section header",
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ポーリング" } }
+      }
+    },
+    "Poll every %llds" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%lld 秒ごとに更新" } }
+      }
+    },
+    "Remote Push (Webhook)" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "リモートプッシュ（Webhook）" } }
+      }
+    },
+    "Optional. Enables cloud relay delivery for webhook-triggered push alerts." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "任意。Webhook 経由のプッシュ通知をクラウドリレーで配信します。" } }
+      }
+    },
+    "Enable Remote Push" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "リモートプッシュを有効化" } }
+      }
+    },
+    "WEBHOOK URL" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "WEBHOOK URL" } }
+      }
+    },
+    "TOKEN" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "トークン" } }
+      }
+    },
+    "Copy cURL Example" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "cURL の例をコピー" } }
+      }
+    },
+    "cURL example copied." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "cURL の例をコピーしました。" } }
+      }
+    },
+    "Send Test Push" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "テストプッシュを送信" } }
+      }
+    },
+    "Sending..." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "送信中…" } }
+      }
+    },
+    "Test push sent." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "テストプッシュを送信しました。" } }
+      }
+    },
+    "No webhook token configured yet. Re-run installer and scan the QR code to auto-configure remote push." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Webhook トークンが未設定です。インストーラを再実行し QR コードを読み取ると、リモートプッシュが自動で設定されます。" } }
+      }
+    },
+    "Use this endpoint from scripts, hooks, or CI to deliver reliable APNs alerts." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "スクリプト、フック、CI からこのエンドポイントを呼び出すと、安定した APNs 通知を配信できます。" } }
+      }
+    },
+    "Font Size" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "文字サイズ" } }
+      }
+    },
+    "iPhone Font Size: %lldpt" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "iPhone の文字サイズ：%lldpt" } }
+      }
+    },
+    "Watch Font Size: %lldpt" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ウォッチの文字サイズ：%lldpt" } }
+      }
+    },
+    "Color Theme" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "カラーテーマ" } }
+      }
+    },
+    "Theme" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "テーマ" } }
+      }
+    },
+    "Default" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デフォルト" } }
+      }
+    },
+    "Solarized Dark" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Solarized Dark" } }
+      }
+    },
+    "Dracula" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Dracula" } }
+      }
+    },
+    "Gruvbox" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Gruvbox" } }
+      }
+    },
+    "Apple Watch" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Apple Watch" } }
+      }
+    },
+    "Watch" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ウォッチ" } }
+      }
+    },
+    "Connected" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続中" } }
+      }
+    },
+    "Not reachable" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "未接続" } }
+      }
+    },
+    "Watch status: %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ウォッチの状態：%@" } }
+      }
+    },
+    "Watch Input" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ウォッチ入力" } }
+      }
+    },
+    "Unlocked" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "アンロック済み" } }
+      }
+    },
+    "Send keys to tmux from your Apple Watch - dictation, scribble, and a full key toolbar." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Apple Watch から tmux にキー入力を送れます。音声入力、スクリブル、フルキーツールバー対応。" } }
+      }
+    },
+    "Unlock Watch Input" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ウォッチ入力をアンロック" } }
+      }
+    },
+    "Purchasing..." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "購入処理中…" } }
+      }
+    },
+    "Restore Purchase" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "購入を復元" } }
+      }
+    },
+    "Restoring..." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "復元中…" } }
+      }
+    },
+    "Purchase restored." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "購入を復元しました。" } }
+      }
+    },
+    "Demo" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デモ" } }
+      }
+    },
+    "Load Demo Data" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デモデータを読み込む" } }
+      }
+    },
+    "Load Demo Data?" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デモデータを読み込みますか？" } }
+      }
+    },
+    "Load Demo" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デモを読み込む" } }
+      }
+    },
+    "This clears your server connection and loads sample terminal output. You can reconnect anytime." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サーバー接続を解除してサンプルのターミナル出力を読み込みます。いつでも再接続できます。" } }
+      }
+    },
+    "Load sample data for testing without a server." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サーバーなしで試せるサンプルデータを読み込みます。" } }
+      }
+    },
+    "About" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "アプリについて" } }
+      }
+    },
+    "Version" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "バージョン" } }
+      }
+    },
+    "Privacy Policy" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "プライバシーポリシー" } }
+      }
+    },
+    "Terms of Service" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "利用規約" } }
+      }
+    },
+    "Support" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サポート" } }
+      }
+    },
+    "Camera access is needed to scan the QR code. Enable it in Settings." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "QR コードを読み取るにはカメラへのアクセスが必要です。設定から有効にしてください。" } }
+      }
+    },
+    "Connection test result: %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続テストの結果：%@" } }
+      }
+    },
+
+    "Server" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サーバー" } }
+      }
+    },
+    "Online" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "オンライン" } }
+      }
+    },
+    "Offline" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "オフライン" } }
+      }
+    },
+    "Target" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "対象" } }
+      }
+    },
+    "Default pane" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デフォルトのペイン" } }
+      }
+    },
+    "Ready" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "準備完了" } }
+      }
+    },
+    "Refresh terminal" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ターミナルを更新" } }
+      }
+    },
+    "Copy output" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "出力をコピー" } }
+      }
+    },
+    "Copied" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "コピー済み" } }
+      }
+    },
+    "LIVE TARGET" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ライブ対象" } }
+      }
+    },
+    "Disconnected" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "切断中" } }
+      }
+    },
+    "Switch session, currently %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "セッションを切替（現在：%@）" } }
+      }
+    },
+    "Terminal output" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ターミナル出力" } }
+      }
+    },
+    "Connection needs attention" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続を確認してください" } }
+      }
+    },
+    "Waiting for tmux output" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "tmux からの出力を待機中" } }
+      }
+    },
+    "Connect a server from Settings or load demo data to preview the watch stream." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "設定からサーバーに接続するか、デモデータを読み込んでウォッチ表示をプレビューできます。" } }
+      }
+    },
+    "Refresh" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "更新" } }
+      }
+    },
+    "Error: %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "エラー：%@" } }
+      }
+    },
+    "Follow tmux focus" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "tmux のフォーカスに追従" } }
+      }
+    },
+    "Always show the active pane" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "常にアクティブなペインを表示" } }
+      }
+    },
+    "Choose a specific session or window when you want the phone and watch to stay pinned." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "iPhone とウォッチで表示を固定したい場合は、特定のセッションまたはウィンドウを選んでください。" } }
+      }
+    },
+    "attached" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続中" } }
+      }
+    },
+    "active window" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "アクティブなウィンドウ" } }
+      }
+    },
+    "window" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ウィンドウ" } }
+      }
+    },
+    "Session %@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "セッション %@" } }
+      }
+    },
+    "%lld windows" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "%lld 個のウィンドウ" } }
+      }
+    },
+    "tmux target" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "tmux 対象を選択" } }
+      }
+    },
+
+    "Notification token missing. Re-run install and scan QR again." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "通知トークンが見つかりません。インストールを再実行し、QR を再度読み取ってください。" } }
+      }
+    },
+    "Webhook URL is invalid. Re-scan the install QR code." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Webhook URL が無効です。インストールの QR コードを読み取り直してください。" } }
+      }
+    },
+    "Webhook failed with status %lld." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Webhook が失敗しました（ステータス %lld）。" } }
+      }
+    },
+    "Webhook failed with status %1$lld: %2$@" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "Webhook が失敗しました（ステータス %1$lld）：%2$@" } }
+      }
+    },
+
+    "Language" : {
+      "comment" : "Settings row title for the language picker",
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "言語" } }
+      }
+    },
+    "System" : {
+      "comment" : "Language picker option that follows the device language",
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "システム" } }
+      }
+    },
+    "English" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "English" } }
+      }
+    },
+    "日本語" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "日本語" } }
+      }
+    },
+    "Language changed. Restart the app to apply." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "言語を変更しました。アプリを再起動すると反映されます。" } }
+      }
+    },
+    "Language Changed" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "言語を変更しました" } }
+      }
+    },
+    "More options" : {
+      "comment" : "Accessibility label for the kebab menu in onboarding",
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "その他のオプション" } }
+      }
+    },
+    "OK" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "OK" } }
+      }
+    }
+  }
+}

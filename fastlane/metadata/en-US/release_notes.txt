@@ -1,0 +1,3 @@
+- Japanese localization (日本語対応)
+- Tap the menu on the welcome screen to switch language anytime
+- Polish and stability fixes

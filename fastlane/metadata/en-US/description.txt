@@ -1,0 +1,13 @@
+tmuxonwatch brings live tmux output from your own Mac to iPhone and Apple Watch.
+
+Scan the setup QR code from the Mac installer, connect to your tmux server, and keep up with builds, logs, and long-running commands with readable monospace rendering tuned for small screens.
+
+Free features include:
+- Live terminal viewing on iPhone and Apple Watch
+- Demo mode with sample terminal output
+- Themes, font sizing, and polling controls
+- Optional notifications when commands finish
+
+One-time Pro unlock includes:
+- Send keys from Apple Watch
+- Watch-side session and window switching

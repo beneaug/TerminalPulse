@@ -8,6 +8,11 @@ struct TerminalPulseApp: App {
     @UIApplicationDelegateAdaptor(NotificationAppDelegate.self) private var notificationAppDelegate
 
     init() {
+        // First-launch only: if no language preference is stored and the
+        // device region is Japan, default to Japanese so JP users get a
+        // localized onboarding experience.
+        LanguageManager.bootstrapForFirstLaunchIfNeeded()
+
         // Register sensible defaults so raw UserDefaults.integer reads match @AppStorage defaults
         UserDefaults.standard.register(defaults: [
             "pollInterval": 2,
@@ -15,7 +20,9 @@ struct TerminalPulseApp: App {
             "watchFontSize": 10,
             "colorTheme": "default",
             "notificationsEnabled": true,
-            "remotePushEnabled": false
+            "remotePushEnabled": false,
+            "protectScreenPreviews": true,
+            "hideNotificationDetails": true
         ])
 
         BGTaskScheduler.shared.register(
@@ -23,7 +30,7 @@ struct TerminalPulseApp: App {
             using: nil
         ) { task in
             guard let refreshTask = task as? BGAppRefreshTask else { return }
-            PollingService.backgroundRefreshHandler?(refreshTask)
+            Task { @MainActor in PollingService.shared.handleBackgroundRefresh(task: refreshTask) }
         }
     }
 
@@ -42,8 +49,9 @@ struct TerminalPulseApp: App {
     private static func migrateTokenToKeychain() {
         let defaults = UserDefaults.standard
         if let legacyToken = defaults.string(forKey: "authToken"), !legacyToken.isEmpty {
-            _ = KeychainService.save(key: "authToken", value: legacyToken)
-            defaults.removeObject(forKey: "authToken")
+            if KeychainService.save(key: "authToken", value: legacyToken) {
+                defaults.removeObject(forKey: "authToken")
+            }
         }
     }
 }
@@ -54,6 +62,7 @@ final class NotificationAppDelegate: NSObject, UIApplicationDelegate, UNUserNoti
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        PollingService.shared.configureWatchBridge()
         return true
     }
 

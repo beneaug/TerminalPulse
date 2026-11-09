@@ -19,6 +19,7 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     var isConnected = false
     var host = ""
     var currentPaneId: String?
+    private(set) var currentInputContextID: String?
     var sendStatus: SendStatus = .idle
     var isProUnlocked = false
     var sessionTransitionToken = 0
@@ -27,6 +28,9 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     var switchedWindowFlashToken = 0
 
     private var session: WCSession?
+    private var contentObservation: NSKeyValueObservation?
+    private var activationObservation: NSKeyValueObservation?
+    private var backgroundWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     private var currentHash = ""
     private var latestSequence = 0
     private var latestSequenceEpoch: String?
@@ -38,29 +42,72 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     private var deferredPayload: WatchPayload?
     private var needsDeferredRerender = false
     private var isLuminanceReduced = false
-    private var isInBackground = false
+    private var isInBackground = true
     private var refreshPulseTimer: Timer?
     private var lastPayloadAt: Date = .distantPast
+    private var lastRefreshAttemptAt: Date = .distantPast
+    private var latestPayload: WatchPayload?
+    private var lastHapticEventID: String?
+    private var refreshRequestInFlight = false
+    private var captureAwaitingSince: Date?
     private var consecutiveUnchangedPayloads = 0
     private var consecutiveRefreshFailures = 0
     private var lastQueuedRefreshRequestAt: Date = .distantPast
-    private var lastQueuedSwitchRequestAt: Date = .distantPast
-    private let minQueuedSwitchGap: TimeInterval = 0.35
     private var pendingSessionSwitchDirection: Int?
     private var pendingSessionSwitchResetTask: Task<Void, Never>?
     private var lastSwitchRequestAt: Date = .distantPast
     private var lastSessionIdentity = ""
     private var windowFlashClearTask: Task<Void, Never>?
-    private static let isoFormatter = ISO8601DateFormatter()
 
     override init() {
         super.init()
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "demoSnapshot"), var snapshot = DemoData.payload.toDictionary() {
+            snapshot["_proUnlocked"] = true
+            handlePayload(snapshot)
+            return
+        }
+        #endif
         guard WCSession.isSupported() else { return }
         let s = WCSession.default
         s.delegate = self
         s.activate()
         self.session = s
+        contentObservation = s.observe(\.hasContentPending) { [weak self] _, _ in
+            Task { @MainActor in self?.finishBackgroundDeliveryIfReady() }
+        }
+        activationObservation = s.observe(\.activationState) { [weak self] _, _ in
+            Task { @MainActor in self?.finishBackgroundDeliveryIfReady() }
+        }
         loadCache()
+    }
+
+    /// Keep the system's delivery task alive until queued contexts have arrived.
+    /// KVO + cancellation avoids a polling loop and returns the budget promptly.
+    func receiveBackgroundContent() async {
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else { continuation.resume(); return }
+                backgroundWaiters[id] = continuation
+                finishBackgroundDeliveryIfReady()
+            }
+        } onCancel: {
+            Task { @MainActor in self.backgroundWaiters.removeValue(forKey: id)?.resume() }
+        }
+    }
+
+    private func finishBackgroundDeliveryIfReady() {
+        guard !backgroundWaiters.isEmpty else { return }
+        if let session, session.activationState == .activated {
+            guard !session.hasContentPending else { return }
+            if !session.receivedApplicationContext.isEmpty {
+                handlePayload(session.receivedApplicationContext)
+            }
+        }
+        let completed = backgroundWaiters.values
+        backgroundWaiters.removeAll()
+        for continuation in completed { continuation.resume() }
     }
 
     func requestRefresh() {
@@ -84,6 +131,7 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
         switch phase {
         case .active:
             isInBackground = false
+            flushDeferredUpdates()
             startRefreshPulseLoopIfNeeded()
             requestRefreshIfNeeded()
         case .inactive:
@@ -97,14 +145,37 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
         }
     }
 
-    func sendKeys(text: String? = nil, special: String? = nil) {
+    func sendKeys(text: String? = nil, special: String? = nil, expectedPaneID: String?, expectedContextID: String?, completion: ((Bool) -> Void)? = nil) {
+        guard let contextID = currentInputContextID, let expectedContextID,
+              expectedContextID == contextID else {
+            sendStatus = .error(String(localized: "Refresh on iPhone to enable input."))
+            clearStatusAfterDelay()
+            completion?(false)
+            return
+        }
+        guard let expectedPaneID, expectedPaneID == currentPaneId else {
+            sendStatus = .error(String(localized: "Pane changed. Reopen input."))
+            clearStatusAfterDelay()
+            completion?(false)
+            return
+        }
         guard isProUnlocked else {
             sendStatus = .error("Pro required")
             WKInterfaceDevice.current().play(.failure)
             clearStatusAfterDelay()
+            completion?(false)
             return
         }
-        guard let session else { return }
+        guard sendStatus != .sending else { completion?(false); return }
+        guard let session, session.isReachable, let currentPaneId,
+              currentPaneId.hasPrefix("%"), currentPaneId.count > 1 else {
+            sendStatus = .error(String(localized: "Refresh to reconnect"))
+            WKInterfaceDevice.current().play(.failure)
+            clearStatusAfterDelay()
+            completion?(false)
+            return
+        }
+        statusClearTask?.cancel()
 
         let normalizedText: String? = {
             guard let text else { return nil }
@@ -119,13 +190,14 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
             sendStatus = .error("Invalid key request")
             WKInterfaceDevice.current().play(.failure)
             clearStatusAfterDelay()
+            completion?(false)
             return
         }
 
-        var msg: [String: Any] = ["action": "sendKeys"]
+        var msg: [String: Any] = ["action": "sendKeys", "_inputContextID": contextID]
         if let normalizedText { msg["text"] = normalizedText }
         if let normalizedSpecial { msg["special"] = normalizedSpecial }
-        if let currentPaneId { msg["paneId"] = currentPaneId }
+        msg["paneId"] = currentPaneId
 
         sendStatus = .sending
 
@@ -136,9 +208,11 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
                     let label = text ?? special ?? "key"
                     self.sendStatus = .sent(label)
                     WKInterfaceDevice.current().play(.click)
+                    completion?(true)
                 } else {
                     let err = reply["error"] as? String ?? "Failed"
                     self.sendStatus = .error(err)
+                    completion?(false)
                     WKInterfaceDevice.current().play(.failure)
                 }
                 self.clearStatusAfterDelay()
@@ -147,6 +221,7 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
             Task { @MainActor in
                 guard let self else { return }
                 self.sendStatus = .error(error.localizedDescription)
+                completion?(false)
                 WKInterfaceDevice.current().play(.failure)
                 self.clearStatusAfterDelay()
             }
@@ -154,6 +229,11 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     }
 
     func switchSession(direction rawDirection: Int) {
+        guard let contextID = currentInputContextID else {
+            sendStatus = .error(String(localized: "Refresh on iPhone to enable input."))
+            clearStatusAfterDelay()
+            return
+        }
         guard isProUnlocked else {
             WKInterfaceDevice.current().play(.failure)
             return
@@ -170,14 +250,14 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
 
         let request: [String: Any] = [
             "action": "switchSession",
+            "_inputContextID": contextID,
             "direction": direction,
             "ts": ts
         ]
 
         guard session.isReachable else {
-            queueBackgroundSwitchSignal(via: session, direction: direction, ts: ts)
-            sendStatus = .sent(direction > 0 ? "next" : "prev")
-            WKInterfaceDevice.current().play(.click)
+            pendingSessionSwitchDirection = nil
+            sendStatus = .error(String(localized: "Open iPhone and retry switch."))
             clearStatusAfterDelay()
             return
         }
@@ -188,7 +268,6 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
                 Task { @MainActor in
                     guard let self else { return }
                     if reply["ok"] as? Bool == true {
-                        self.isConnected = true
                         WKInterfaceDevice.current().play(.click)
                         self.schedulePendingSessionDirectionReset()
                     } else {
@@ -205,18 +284,13 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
                 Task { @MainActor in
                     guard let self else { return }
                     self.isConnected = false
-                    if session.isReachable {
-                        self.pendingSessionSwitchResetTask?.cancel()
-                        self.pendingSessionSwitchDirection = nil
-                        self.sendStatus = .error(self.compactSwitchError(error.localizedDescription))
-                        WKInterfaceDevice.current().play(.failure)
-                        self.clearStatusAfterDelay()
-                    } else {
-                        self.queueBackgroundSwitchSignal(via: session, direction: direction, ts: ts)
-                        self.sendStatus = .sent(direction > 0 ? "next" : "prev")
-                        WKInterfaceDevice.current().play(.click)
-                        self.clearStatusAfterDelay()
-                    }
+                    // A missing reply can follow a successful switch. Never replay
+                    // a non-idempotent command via another transport automatically.
+                    self.pendingSessionSwitchResetTask?.cancel()
+                    self.pendingSessionSwitchDirection = nil
+                    self.sendStatus = .error(self.compactSwitchError(error.localizedDescription))
+                    WKInterfaceDevice.current().play(.failure)
+                    self.clearStatusAfterDelay()
                 }
             }
         )
@@ -251,7 +325,9 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     }
 
     private func sendRefreshRequest(automatic: Bool, reason: String) {
-        guard let session else { return }
+        guard let session, session.activationState == .activated else { return }
+        guard !refreshRequestInFlight else { return }
+        if automatic && isInBackground { return }
 
         if automatic {
             let now = Date()
@@ -264,6 +340,7 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
             "reason": reason,
             "ts": Date().timeIntervalSince1970
         ]
+        lastRefreshAttemptAt = Date()
 
         guard session.isReachable else {
             wasDisconnected = true
@@ -275,15 +352,20 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
             return
         }
 
+        refreshRequestInFlight = true
+        if captureAwaitingSince == nil { captureAwaitingSince = Date() }
         session.sendMessage(request, replyHandler: { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                self.isConnected = true
-                self.consecutiveRefreshFailures = 0
+                self.refreshRequestInFlight = false
+                // An acknowledgement means the phone heard us, not that the
+                // server capture succeeded. Only a fresh payload marks it live.
+                self.scheduleNextRefreshPulse()
             }
         }, errorHandler: { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                self.refreshRequestInFlight = false
                 self.wasDisconnected = true
                 self.isConnected = false
                 if automatic {
@@ -307,6 +389,9 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     }
 
     private func scheduleNextRefreshPulse() {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "demoSnapshot") { return }
+        #endif
         guard !isInBackground else {
             stopRefreshPulseLoop()
             return
@@ -315,7 +400,9 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
         refreshPulseTimer?.invalidate()
         let age = Date().timeIntervalSince(lastPayloadAt)
         let staleTarget = refreshStalenessTarget()
-        let interval = max(1.0, staleTarget - age)
+        let requestAge = Date().timeIntervalSince(lastRefreshAttemptAt)
+        let interval = refreshRequestInFlight ? max(1, 30 - requestAge)
+            : RefreshPolicy.delay(interval: staleTarget, payloadAge: age, requestAge: requestAge)
 
         let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             Task { @MainActor in
@@ -328,7 +415,20 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
 
     private func handleRefreshPulse() {
         guard !isInBackground else { return }
+        if let since = captureAwaitingSince, Date().timeIntervalSince(since) >= max(10, refreshStalenessTarget()) {
+            // A phone ACK without a successful server capture must also back off.
+            captureAwaitingSince = nil
+            consecutiveRefreshFailures = min(consecutiveRefreshFailures + 1, 6)
+        }
+        if refreshRequestInFlight, Date().timeIntervalSince(lastRefreshAttemptAt) >= 30 {
+            refreshRequestInFlight = false
+            consecutiveRefreshFailures = min(consecutiveRefreshFailures + 1, 6)
+        }
         let age = Date().timeIntervalSince(lastPayloadAt)
+        if !RefreshPolicy.isFresh(payloadAge: age, interval: refreshStalenessTarget()) {
+            wasDisconnected = wasDisconnected || isConnected
+            isConnected = false
+        }
         if age >= refreshStalenessTarget() {
             sendRefreshRequest(automatic: true, reason: "pulse")
         }
@@ -337,20 +437,8 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
 
     private func refreshStalenessTarget() -> TimeInterval {
         let pollInterval = TimeInterval(UserDefaults.standard.integer(forKey: "pollInterval").clamped(to: 1...120, default: 2))
-        let baseActive = max(2.6, pollInterval + 0.6)
-        let baseReduced = max(8.0, pollInterval * 2.5)
-        let base = isLuminanceReduced ? baseReduced : baseActive
-
-        let exponent = max(0, min(consecutiveUnchangedPayloads - 2, 3))
-        var interval = base * pow(1.8, Double(exponent))
-        let cap = isLuminanceReduced ? 30.0 : 15.0
-        interval = min(interval, cap)
-
-        if consecutiveRefreshFailures > 0 {
-            let failureBackoff = min(60.0, 5.0 * pow(2.0, Double(min(consecutiveRefreshFailures, 3))))
-            interval = max(interval, failureBackoff)
-        }
-        return interval
+        return RefreshPolicy.watchInterval(base: pollInterval, unchanged: consecutiveUnchangedPayloads,
+                                           failures: consecutiveRefreshFailures, reduced: isLuminanceReduced)
     }
 
     private func minQueuedRefreshGap() -> TimeInterval {
@@ -358,13 +446,6 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
             return 12.0
         }
         return isLuminanceReduced ? 8.0 : 2.5
-    }
-
-    private func maxOutstandingRefreshHints() -> Int {
-        if isInBackground || isLuminanceReduced {
-            return 1
-        }
-        return 3
     }
 
     private func queueBackgroundRefreshSignal(via session: WCSession, reason: String) {
@@ -383,36 +464,14 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
         let outstandingRefreshHints = session.outstandingUserInfoTransfers.filter {
             ($0.userInfo["action"] as? String) == "refresh"
         }.count
-        if outstandingRefreshHints < maxOutstandingRefreshHints() {
+        if outstandingRefreshHints < 1 {
             session.transferUserInfo(hint)
         }
     }
-
-    private func queueBackgroundSwitchSignal(via session: WCSession, direction: Int, ts: TimeInterval) {
-        let now = Date()
-        guard now.timeIntervalSince(lastQueuedSwitchRequestAt) >= minQueuedSwitchGap else { return }
-        lastQueuedSwitchRequestAt = now
-
-        let hint: [String: Any] = [
-            "action": "switchSession",
-            "direction": direction,
-            "queued": true,
-            "ts": ts
-        ]
-        try? session.updateApplicationContext(hint)
-
-        let hasPendingSwitchHint = session.outstandingUserInfoTransfers.contains {
-            ($0.userInfo["action"] as? String) == "switchSession"
-        }
-        if !hasPendingSwitchHint {
-            session.transferUserInfo(hint)
-        }
-    }
-
 
     // MARK: - Payload handling
 
-    private func handlePayload(_ dict: [String: Any]) {
+    private func handlePayload(_ dict: [String: Any], live: Bool = false) {
         if let ts = dict["_seqTs"] as? TimeInterval, ts < latestSequenceTimestamp {
             return
         }
@@ -429,6 +488,9 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
         }
 
         // Sync settings from iPhone (before hash check, so settings always update)
+        if let protectPreviews = dict["_protectScreenPreviews"] as? Bool {
+            UserDefaults.standard.set(protectPreviews, forKey: "protectScreenPreviews")
+        }
         var settingsChanged = false
         if let syncedFontSize = dict["_watchFontSize"] as? Int, syncedFontSize > 0 {
             let current = UserDefaults.standard.integer(forKey: "watchFontSize")
@@ -457,7 +519,7 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
         if dict["_settingsOnly"] as? Bool == true {
             if settingsChanged {
                 currentHash = "" // Force accept next payload (dividers recalculated at new font size)
-                if isLuminanceReduced {
+                if isLuminanceReduced || isInBackground {
                     needsDeferredRerender = true
                 } else {
                     rerenderCached()
@@ -470,46 +532,62 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
 
         guard let payload = WatchPayload.from(dictionary: dict) else { return }
 
-        // Track the current pane for send-keys targeting
+        // Only an accepted capture can authorize mutations. Settings-only updates
+        // must never relabel an old capture as belonging to a different server.
         currentPaneId = payload.paneId
+        currentInputContextID = (dict["_inputContextID"] as? String).flatMap { $0.isEmpty ? nil : $0 }
 
-        let changed = payload.hash != currentHash
-        lastPayloadAt = Date()
+        let changed = payload.renderIdentity != latestPayload?.renderIdentity
+        latestPayload = payload
+        // A delayed application context is useful cached output, not proof the
+        // server is still reachable. Judge freshness by the phone's capture time.
+        lastPayloadAt = TerminalTimestamp.date(from: payload.ts) ?? .distantPast
+        lastUpdate = TerminalTimestamp.date(from: payload.ts)
+        let fresh = RefreshPolicy.isFresh(payloadAge: Date().timeIntervalSince(lastPayloadAt), interval: refreshStalenessTarget())
+        if fresh, wasDisconnected, !currentHash.isEmpty, !isInBackground {
+            WKInterfaceDevice.current().play(.directionUp)
+        }
+        wasDisconnected = !fresh
+        isConnected = fresh
         if changed {
             consecutiveUnchangedPayloads = 0
         } else {
             consecutiveUnchangedPayloads = min(consecutiveUnchangedPayloads + 1, 20)
         }
-        consecutiveRefreshFailures = 0
+        if fresh {
+            consecutiveRefreshFailures = 0
+            captureAwaitingSince = nil
+        }
         scheduleNextRefreshPulse()
 
-        // Re-render if content changed OR settings changed (even with same hash)
-        guard changed || settingsChanged else { return }
+        if live, fresh, dict["commandFinished"] as? Bool == true,
+           let eventID = dict["_eventID"] as? String, eventID != lastHapticEventID {
+            lastHapticEventID = eventID
+            WKInterfaceDevice.current().play(.notification)
+        }
 
-        if isLuminanceReduced {
+        // Re-render if content changed OR settings changed (even with same hash)
+        guard changed || settingsChanged || (currentHash.isEmpty && deferredPayload == nil) else { return }
+
+        if isLuminanceReduced || isInBackground {
             deferredPayload = payload
             needsDeferredRerender = needsDeferredRerender || settingsChanged
         } else {
             applyPayloadToUI(payload, force: settingsChanged)
         }
 
-        // Haptic: check if command finished (notification payload flag)
-        // Only fire if this is a live message, not a cached restore
-        if let commandFinished = dict["commandFinished"] as? Bool, commandFinished {
-            WKInterfaceDevice.current().play(.notification)
-        }
-
         // Strip transient flags before caching to avoid replaying haptics on launch
         var cacheDict = dict
         cacheDict.removeValue(forKey: "commandFinished")
+        cacheDict.removeValue(forKey: "_eventID")
+        cacheDict.removeValue(forKey: "_inputContextID")
         saveCache(cacheDict)
     }
 
     private func applyPayloadToUI(_ payload: WatchPayload, force: Bool = false) {
-        guard force || payload.hash != currentHash else { return }
+        guard force || payload.renderIdentity != currentHash else { return }
 
-        let isFirstData = currentHash.isEmpty
-        currentHash = payload.hash
+        currentHash = payload.renderIdentity
 
         let fontSize = CGFloat(UserDefaults.standard.integer(forKey: "watchFontSize").clamped(to: 7...12, default: 10))
         renderedLines = RunsRenderer.buildLines(from: payload.runs, fontSize: fontSize)
@@ -525,14 +603,8 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
         pendingSessionSwitchResetTask?.cancel()
         pendingSessionSwitchDirection = nil
         host = payload.host
-        lastUpdate = Self.isoFormatter.date(from: payload.ts) ?? Date()
+        lastUpdate = TerminalTimestamp.date(from: payload.ts) ?? Date()
 
-        // Haptic: reconnection
-        if wasDisconnected && !isFirstData {
-            WKInterfaceDevice.current().play(.directionUp)
-            wasDisconnected = false
-        }
-        isConnected = true
     }
 
     private func flashWindowIndex(_ winIndex: Int) {
@@ -547,6 +619,7 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
     }
 
     private func flushDeferredUpdates() {
+        guard !isInBackground, !isLuminanceReduced else { return }
         if needsDeferredRerender {
             needsDeferredRerender = false
             currentHash = ""
@@ -562,9 +635,7 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
 
     /// Re-render the cached terminal output with current settings (font size, theme).
     private func rerenderCached() {
-        guard let data = UserDefaults.standard.data(forKey: Self.cacheKey),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let payload = WatchPayload.from(dictionary: dict) else { return }
+        guard let payload = latestPayload else { return }
 
         let fontSize = CGFloat(UserDefaults.standard.integer(forKey: "watchFontSize").clamped(to: 7...12, default: 10))
         renderedLines = RunsRenderer.buildLines(from: payload.runs, fontSize: fontSize)
@@ -602,7 +673,11 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
             UserDefaults.standard.removeObject(forKey: Self.cacheKey)
             return
         }
-        handlePayload(dict)
+        guard let payload = WatchPayload.from(dictionary: dict) else { return }
+        latestPayload = payload
+        isProUnlocked = dict["_proUnlocked"] as? Bool ?? false
+        applyPayloadToUI(payload)
+        isConnected = false
     }
 
     // MARK: - WCSessionDelegate
@@ -622,8 +697,6 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
                 // Phone became reachable — request one refresh.
                 self.requestRefreshIfNeeded()
                 self.startRefreshPulseLoopIfNeeded()
-                self.isConnected = true
-                self.wasDisconnected = false
             } else {
                 self.wasDisconnected = true
                 self.isConnected = false
@@ -633,7 +706,7 @@ final class PhoneBridge: NSObject, WCSessionDelegate {
 
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         Task { @MainActor in
-            self.handlePayload(message)
+            self.handlePayload(message, live: true)
         }
     }
 

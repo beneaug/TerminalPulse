@@ -1,0 +1,61 @@
+{
+  "sourceLanguage" : "en",
+  "version" : "1.0",
+  "strings" : {
+    "Open iPhone and retry switch." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "iPhoneを開いて切り替えを再試行してください。" } } } },
+    "Update both apps if needed." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "必要に応じて両方のアプリを更新してください。" } } } },
+    "Refresh on iPhone to enable input." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "iPhoneで更新して入力を有効にしてください。" } } } },
+    "Pane changed. Reopen input." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "ペインが変わりました。入力画面を開き直してください。" } } } },
+    "Terminal hidden" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "ターミナルを非表示中"}}}},
+    "Raise your wrist to view" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "手首を上げて表示"}}}},
+    "Live" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "ライブ"}}}},
+    "Reading" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "閲覧中"}}}},
+    "Read" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "読む"}}}},
+    "Latest" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "最新"}}}},
+    "Pause to read" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "更新を止めて読む"}}}},
+    "Show latest output" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "最新の出力を表示"}}}},
+    "Send text" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "テキストを送信" } } } },
+    "Refresh to reconnect" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "更新して再接続" } } } },
+    "Queued" : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "送信待ち" } } } },
+    "Waiting for data..." : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "データを待機中…" } }
+      }
+    },
+    "Send Text" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "テキスト送信" } }
+      }
+    },
+    "Type or dictate" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "入力または音声で入力" } }
+      }
+    },
+    "Cancel" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "キャンセル" } }
+      }
+    },
+    "Done" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "完了" } }
+      }
+    },
+    "Connected" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "接続中" } }
+      }
+    },
+    "Disconnected" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "切断中" } }
+      }
+    },
+    "Refresh" : {
+      "localizations" : {
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "更新" } }
+      }
+    }
+  }
+}

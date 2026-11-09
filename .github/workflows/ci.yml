@@ -19,6 +19,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install server dependencies
+        run: python -m pip install -r server/requirements.txt
+
       - name: Compile Python
         run: python -m compileall server
 
@@ -31,6 +34,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Test networking, refresh policy, and models
+        run: swift test
 
       - name: Build iOS App
         run: |

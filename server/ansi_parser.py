@@ -41,9 +41,10 @@ def _color_256(n: int) -> str:
         return _COLOR_256_NAMES[n]
     if 16 <= n <= 231:
         n -= 16
-        r = (n // 36) * 51
-        g = ((n % 36) // 6) * 51
-        b = (n % 6) * 51
+        levels = (0, 95, 135, 175, 215, 255)
+        r = levels[n // 36]
+        g = levels[(n % 36) // 6]
+        b = levels[n % 6]
         return f"#{r:02x}{g:02x}{b:02x}"
     if 232 <= n <= 255:
         v = 8 + (n - 232) * 10

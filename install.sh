@@ -16,10 +16,12 @@ CYAN='\033[0;36m'
 RESET='\033[0m'
 
 # Auto-detect script location if run from repo, otherwise default to ~/tmuxonwatch/server
+RUNNING_FROM_REPO=0
 if [[ -f "${BASH_SOURCE[0]:-}" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if [[ -f "$SCRIPT_DIR/server/main.py" ]]; then
         INSTALL_DIR="$SCRIPT_DIR/server"
+        RUNNING_FROM_REPO=1
     else
         INSTALL_DIR="$HOME/tmuxonwatch/server"
     fi
@@ -149,6 +151,7 @@ setup_optional_notify_hooks() {
     info "Optional setup: automatic command-finished alerts"
     echo "  tmuxonwatch can add a managed hook block to your shell config."
     echo "  This sends a remote push when a tmux command returns to prompt."
+    echo "  Command text is excluded by default; alerts contain only outcome and duration."
     echo "  It only edits your shell config if you approve below."
 
     if ! prompt_yes_no "Install automatic shell hooks for remote alerts?" "N"; then
@@ -191,6 +194,7 @@ if [[ -z "${TMUXONWATCH_NOTIFY_HOOKS_INSTALLED:-}" ]]; then
   _tmuxonwatch_preexec_hook() {
     TMUXONWATCH_CMD_START="$(date +%s)"
     TMUXONWATCH_CMD_TEXT="$1"
+    TMUXONWATCH_COMMAND_SEQUENCE=$(( ${TMUXONWATCH_COMMAND_SEQUENCE:-0} + 1 ))
   }
 
   _tmuxonwatch_precmd_hook() {
@@ -205,9 +209,14 @@ if [[ -z "${TMUXONWATCH_NOTIFY_HOOKS_INSTALLED:-}" ]]; then
     duration=$((now - TMUXONWATCH_CMD_START))
     cmd="${TMUXONWATCH_CMD_TEXT:-command}"
     pane="$(tmux display-message -p "#{session_name}:#{window_index}:#{window_name}" 2>/dev/null || true)"
-    title="${pane:-tmux command finished}"
-    message="${cmd} (exit ${exit_code}, ${duration}s)"
-    event_id="${pane}|${cmd}|${TMUXONWATCH_CMD_START}|${exit_code}"
+    title="tmuxonwatch"
+    message="Command finished (exit ${exit_code}, ${duration}s)"
+    # Explicit opt-in only: command arguments can contain passwords or keys.
+    if [[ "${TP_NOTIFY_INCLUDE_COMMAND:-0}" == "1" ]]; then
+      title="${pane:-tmux command finished}"
+      message="${cmd} (exit ${exit_code}, ${duration}s)"
+    fi
+    event_id="shell|${TMUX_PANE:-unknown}|$$|${TMUXONWATCH_CMD_START}|${TMUXONWATCH_COMMAND_SEQUENCE:-0}|${exit_code}"
 
     TMUXONWATCH_CMD_START=""
     TMUXONWATCH_CMD_TEXT=""
@@ -257,7 +266,8 @@ setup_optional_claude_hooks() {
     echo ""
     info "Optional setup: Claude Code ready-for-input alerts"
     echo "  tmuxonwatch can add a managed Claude Code hook configuration."
-    echo "  This sends a push notification when Claude stops and is waiting for input."
+    echo "  This sends a push notification when Claude finishes a response."
+    echo "  A finished response does not prove the task succeeded or background work ended."
     echo "  It only edits ~/.claude/settings.json and ~/.claude/hooks if you approve below."
 
     if ! prompt_yes_no "Configure Claude Code hooks for remote alerts?" "N"; then
@@ -322,7 +332,7 @@ PY
 fi
 
 EVENT_ID="claude-stop-${SESSION_ID:-unknown}-$(date +%s)"
-"$HELPER" "$EVENT_ID" "Claude Code" "Done - ready for input." "999" || true
+"$HELPER" "$EVENT_ID" "Claude Code" "Turn finished. Check the session for its outcome." "999" || true
 
 exit 0
 EOF
@@ -473,22 +483,28 @@ if [[ "$(uname)" != "Darwin" ]]; then
     fail "tmuxonwatch server requires macOS."
 fi
 
-# Find Python 3.10+ (prefer homebrew, then system)
+# Find a usable Python 3.10+.
+#
+# Do not trust `python3 --version` alone. A Homebrew Python upgrade can leave
+# extension modules broken even though the interpreter starts; pip then crashes
+# with import errors such as a pyexpat/libexpat symbol mismatch.
 PYTHON=""
-for candidate in /opt/homebrew/bin/python3 /usr/local/bin/python3 python3 python; do
+for candidate in /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.11 /opt/homebrew/bin/python3 /usr/local/bin/python3.13 /usr/local/bin/python3.12 /usr/local/bin/python3.11 /usr/local/bin/python3 python3 python; do
     if command -v "$candidate" &>/dev/null; then
-        version=$("$candidate" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0.0")
+        version=$("$candidate" -c 'import sys, ssl, venv, xml.parsers.expat; assert sys.version_info >= (3, 10); print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0.0")
         major="${version%%.*}"
         minor="${version#*.}"
         if [[ "$major" -ge 3 && "$minor" -ge 10 ]]; then
             PYTHON="$candidate"
             break
+        else
+            warn "Skipping unusable Python at $(command -v "$candidate")"
         fi
     fi
 done
 
 if [[ -z "$PYTHON" ]]; then
-    fail "Python 3.10+ required. Install via: brew install python3"
+    fail "Usable Python 3.10+ required. Try: brew install python@3.13  OR  brew reinstall python@3.14 expat"
 fi
 ok "Found $($PYTHON --version)"
 
@@ -573,10 +589,10 @@ fi
 # ── Server files ─────────────────────────────────────────
 mkdir -p "$INSTALL_DIR"
 GITHUB_RAW="https://raw.githubusercontent.com/beneaug/TerminalPulse/main/server"
-SERVER_FILES="main.py tmux_bridge.py ansi_parser.py requirements.txt notify_event.py"
+SERVER_FILES="main.py tmux_bridge.py ansi_parser.py requirements.txt notify_event.py event_adapter.py"
 
 # Download/update server files from GitHub (skip if running from repo)
-if [[ "$INSTALL_DIR" != *"TerminalPulse"* ]]; then
+if [[ "$RUNNING_FROM_REPO" != "1" ]]; then
     info "Downloading server files..."
     for f in $SERVER_FILES; do
         if curl -sSfL "$GITHUB_RAW/$f" -o "$INSTALL_DIR/$f" 2>/dev/null; then
@@ -594,33 +610,75 @@ else
 fi
 
 # ── Create / verify virtual environment ───────────────────
+venv_is_healthy() {
+    local venv_python="$1"
+    [[ -x "$venv_python" ]] || return 1
+    "$venv_python" - <<'PY' >/dev/null 2>&1
+import sys
+if sys.version_info < (3, 10):
+    raise SystemExit(1)
+import ssl
+import xml.parsers.expat
+import pip
+PY
+}
+
+create_venv() {
+    info "Setting up Python virtual environment..."
+    rm -rf "$INSTALL_DIR/.venv"
+    "$PYTHON" -m venv "$INSTALL_DIR/.venv"
+    "$INSTALL_DIR/.venv/bin/python3" -m ensurepip --upgrade >/dev/null 2>&1 || true
+    ok "Created venv (Python $("$INSTALL_DIR/.venv/bin/python3" --version | awk '{print $2}'))"
+}
+
+install_dependencies() {
+    local pip_bin="$INSTALL_DIR/.venv/bin/python3 -m pip"
+    local log_file
+    log_file="$(mktemp /tmp/tmuxonwatch-pip.XXXXXX.log)"
+
+    if $pip_bin install -q -r "$INSTALL_DIR/requirements.txt" >"$log_file" 2>&1; then
+        $pip_bin install -q qrcode >>"$log_file" 2>&1 || true
+        rm -f "$log_file"
+        return 0
+    fi
+
+    warn "Dependency install from requirements.txt failed; retrying minimal package set."
+    if $pip_bin install -q fastapi "uvicorn[standard]" >"$log_file" 2>&1; then
+        $pip_bin install -q qrcode >>"$log_file" 2>&1 || true
+        rm -f "$log_file"
+        return 0
+    fi
+
+    warn "pip log: $log_file"
+    tail -n 20 "$log_file" 2>/dev/null || true
+    return 1
+}
+
 VENV_OK=false
 if [[ -d "$INSTALL_DIR/.venv" ]]; then
     # Check if existing venv Python is 3.10+
     VENV_PY_VERSION=$("$INSTALL_DIR/.venv/bin/python3" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0.0")
     VENV_MAJOR="${VENV_PY_VERSION%%.*}"
     VENV_MINOR="${VENV_PY_VERSION#*.}"
-    if [[ "$VENV_MAJOR" -ge 3 && "$VENV_MINOR" -ge 10 ]]; then
+    if [[ "$VENV_MAJOR" -ge 3 && "$VENV_MINOR" -ge 10 ]] && venv_is_healthy "$INSTALL_DIR/.venv/bin/python3"; then
         ok "Venv already exists (Python $VENV_PY_VERSION)"
         VENV_OK=true
     else
-        warn "Existing venv uses Python $VENV_PY_VERSION (need 3.10+), recreating..."
+        warn "Existing venv is missing required Python modules or uses Python $VENV_PY_VERSION; recreating..."
         rm -rf "$INSTALL_DIR/.venv"
     fi
 fi
 
 if [[ "$VENV_OK" == "false" ]]; then
-    info "Setting up Python virtual environment..."
-    "$PYTHON" -m venv "$INSTALL_DIR/.venv"
-    ok "Created venv (Python $("$INSTALL_DIR/.venv/bin/python3" --version | awk '{print $2}'))"
+    create_venv
 fi
 
 info "Installing dependencies..."
-"$INSTALL_DIR/.venv/bin/pip" install -q -r "$INSTALL_DIR/requirements.txt" 2>/dev/null || {
-    "$INSTALL_DIR/.venv/bin/pip" install -q fastapi "uvicorn[standard]"
-}
-# Install qrcode so QR always works in the terminal
-"$INSTALL_DIR/.venv/bin/pip" install -q qrcode 2>/dev/null || true
+if ! install_dependencies; then
+    warn "Recreating venv once after dependency install failure..."
+    create_venv
+    install_dependencies || fail "Could not install Python dependencies. See pip log above."
+fi
 ok "Dependencies installed"
 
 if [[ -f "$INSTALL_DIR/notify_event.py" ]]; then

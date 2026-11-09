@@ -5,10 +5,15 @@ import unittest
 SERVER_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SERVER_DIR))
 
-from ansi_parser import parse_lines
+from ansi_parser import parse_lines, _color_256
 
 
 class AnsiParserTests(unittest.TestCase):
+    def test_xterm_color_cube_uses_non_linear_levels(self):
+        self.assertEqual(_color_256(17), "#00005f")
+        self.assertEqual(_color_256(67), "#5f87af")
+        self.assertEqual(_color_256(231), "#ffffff")
+
     def test_basic_color_then_reset(self):
         parsed = parse_lines("\x1b[31mred\x1b[0m plain")
         self.assertEqual(parsed[0][0]["t"], "red")

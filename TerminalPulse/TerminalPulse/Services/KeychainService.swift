@@ -7,13 +7,15 @@ enum KeychainService {
     static func save(key: String, value: String) -> Bool {
         guard let data = value.data(using: .utf8) else { return false }
 
-        // Delete any existing item first
+        // Update in place. A failed write must not erase working credentials.
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
         ]
-        SecItemDelete(deleteQuery as CFDictionary)
+        let updated = SecItemUpdate(deleteQuery as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updated == errSecSuccess { return true }
+        guard updated == errSecItemNotFound else { return false }
 
         let addQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

@@ -54,6 +54,11 @@ struct TerminalTheme {
 }
 
 enum TerminalColors {
+    static let chromeSurface = Color(white: 0.055)
+    /// Product chrome color. Kept separate from ANSI green so terminal themes
+    /// remain faithful while the surrounding app has a consistent identity.
+    static let productAccent = Color(red: 0.79, green: 0.94, blue: 0.29)
+
     // MARK: - Theme Definitions
 
     static let defaultTheme = TerminalTheme(

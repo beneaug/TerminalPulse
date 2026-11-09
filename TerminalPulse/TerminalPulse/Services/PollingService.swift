@@ -7,12 +7,21 @@ import OSLog
 @Observable
 @MainActor
 final class PollingService {
+    static let shared = PollingService()
     var renderedLines: [AttributedString] = []
+    private(set) var currentPayload: WatchPayload?
+    // This belongs to the displayed capture, never to the current Settings values.
+    // Disk cache and demo payloads are intentionally read-only.
+    private(set) var currentPayloadInputContextID: String?
+    var hostLabel: String { currentPayload?.host ?? "" }
+    var plainOutput: String { currentPayload?.runs.map { $0.map(\.t).joined() }.joined(separator: "\n") ?? "" }
+    var isRefreshing: Bool { isPolling }
     var sessionLabel = ""
     var lastUpdate: Date?
     var isConnected = false
     var errorMessage: String?
     var sessions: [SessionInfo] = []
+    var windowsBySession: [String: [WindowInfoResponse]] = [:]
     var selectedTarget: String?
 
     private let api = APIClient()
@@ -35,6 +44,73 @@ final class PollingService {
     private var watchInputSyncTask: Task<Void, Never>?
     private var activeBackgroundPollTask: UIBackgroundTaskIdentifier = .invalid
     private var started = false
+    private var pollTask: Task<Void, Never>?
+    private var lastSuccessfulPoll: Date = .distantPast
+    private var connectionIdentity: WatchConnectionIdentity?
+    private var watchInputContext = WatchInputContext()
+
+    private var boundConnectionAPI: (identity: WatchConnectionIdentity, api: APIClient)?
+
+    private func api(for connection: WatchConnectionIdentity) -> APIClient {
+        if let cached = boundConnectionAPI, cached.identity == connection { return cached.api }
+        let client = APIClient(serverURL: connection.serverURL, authToken: connection.authToken)
+        boundConnectionAPI = (connection, client)
+        return client
+    }
+
+    private var currentConnection: WatchConnectionIdentity {
+        let connection = WatchConnectionIdentity(serverURL: UserDefaults.standard.string(forKey: "serverURL") ?? "http://127.0.0.1:8787",
+                                authToken: KeychainService.load(key: "authToken") ?? "")
+        watchInputContext.observe(connection)
+        return connection
+    }
+
+    private func isCurrentWatchContext(_ id: String?, connection: WatchConnectionIdentity) -> Bool {
+        guard currentConnection == connection else { return false }
+        return watchInputContext.accepts(id, connection: connection)
+    }
+
+    private var inputContextError: String {
+        String(localized: "Terminal connection changed. Refresh the terminal and reopen input before sending. If this continues, update both apps.")
+    }
+
+
+    /// Wire background WatchConnectivity launches independently of SwiftUI appearing.
+    func configureWatchBridge() {
+        guard watchBridge == nil else { return }
+        let bridge = WatchBridge.shared
+        watchBridge = bridge
+        isInBackground = UIApplication.shared.applicationState != .active
+        bridge.onRefreshRequested = { [weak self] in self?.fetchForWatch() }
+        bridge.onSendKeysRequested = { [weak self] text, special, paneID, inputContextID, reply in
+            guard let self, let paneID, paneID != "?" else {
+                reply(false, "Refresh the terminal before sending input.")
+                return
+            }
+            Task { @MainActor in
+                do {
+                    let connection = self.currentConnection
+                    guard self.watchInputContext.accepts(inputContextID, connection: connection) else {
+                        reply(false, self.inputContextError)
+                        return
+                    }
+                    try await self.sendInput(text: text, special: special, paneID: paneID, inputContextID: inputContextID, validatedConnection: connection)
+                    reply(true, nil)
+                } catch { reply(false, error.localizedDescription) }
+            }
+        }
+        bridge.onSwitchSessionRequested = { [weak self] direction, inputContextID, reply in
+            guard let self, StoreManager.shared.isProUnlocked, !DemoData.isDemo else {
+                reply(false, "Connect a terminal and unlock Pro to switch windows.")
+                return
+            }
+            Task { @MainActor in
+                let (ok, error) = await self.switchSession(direction: direction, inputContextID: inputContextID)
+                reply(ok, error)
+            }
+        }
+        StoreManager.shared.onProStatusChanged = { [weak bridge] _ in bridge?.syncProStatus() }
+    }
 
     // Adaptive polling state
     private var consecutiveUnchanged = 0
@@ -43,7 +119,6 @@ final class PollingService {
     private var powerStateObserver: NSObjectProtocol?
 
     static let bgRefreshID = "com.augustbenedikt.TerminalPulse.refresh"
-    static var backgroundRefreshHandler: ((BGAppRefreshTask) -> Void)?
     private static let allowedTargetScalars = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_:.-%")
     private static let preferredWindowBaseDefaultsKey = "preferredWindowBaseBySession"
     private static let shellLikeCommands: Set<String> = [
@@ -51,6 +126,13 @@ final class PollingService {
         "nu", "elvish", "xonsh", "pwsh"
     ]
     private let logger = Logger(subsystem: "com.augustbenedikt.TerminalPulse", category: "PollingService")
+    private static let terminalFontMetrics = UIFontMetrics(forTextStyle: .body)
+
+    private var renderedFontSize: CGFloat {
+        let base = CGFloat(UserDefaults.standard.integer(forKey: "fontSize").clamped(to: 8...16, default: 11))
+        let traits = UITraitCollection(preferredContentSizeCategory: UIApplication.shared.preferredContentSizeCategory)
+        return Self.terminalFontMetrics.scaledValue(for: base, compatibleWith: traits)
+    }
 
     var pollInterval: TimeInterval {
         Double(UserDefaults.standard.integer(forKey: "pollInterval").clamped(to: 1...120, default: 2))
@@ -58,34 +140,15 @@ final class PollingService {
 
     /// Computed effective interval with idle/error backoff and Low Power Mode awareness.
     private var effectiveInterval: TimeInterval {
-        let base = pollInterval
-        let isLowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
-        var interval: TimeInterval
-
-        if consecutiveErrors > 0 {
-            // Error backoff: base * 2^min(errors, 6), capped at 120s
-            let exponent = min(consecutiveErrors, 6)
-            interval = min(base * pow(2.0, Double(exponent)), 120)
-        } else if consecutiveUnchanged > 6 {
-            // Idle backoff: starts after sustained unchanged output, capped at 20s.
-            let exponent = min(consecutiveUnchanged - 6, 4)
-            interval = min(base * pow(2.0, Double(exponent)), 20)
-        } else {
-            interval = base
-        }
-
-        // Low Power Mode floors
-        if isLowPower {
-            let floor: TimeInterval = consecutiveUnchanged > 6 ? 30 : 5
-            interval = max(interval, floor)
-        }
-
-        return interval
+        RefreshPolicy.phoneInterval(base: pollInterval, unchanged: consecutiveUnchanged,
+                                    errors: consecutiveErrors, lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled)
     }
 
     func start() {
         guard !started else { return }
+        configureWatchBridge()
         started = true
+        isInBackground = UIApplication.shared.applicationState != .active
         loadPreferredWindowBases()
         if DemoData.isDemo {
             startDemoAnimation()
@@ -100,6 +163,9 @@ final class PollingService {
     }
 
     func stop() {
+        pollTask?.cancel()
+        pendingPoll = false
+        stopDemoAnimation()
         timer?.invalidate()
         timer = nil
         watchInputSyncTask?.cancel()
@@ -118,11 +184,37 @@ final class PollingService {
         requestPoll()
     }
 
+    func sendInput(text: String? = nil, special: String? = nil, paneID: String, inputContextID: String?, validatedConnection: WatchConnectionIdentity? = nil) async throws {
+        guard StoreManager.shared.isProUnlocked, !DemoData.isDemo else {
+            throw APIError.badStatus(403, "Connect a terminal and unlock Pro to send input.")
+        }
+        guard paneID.hasPrefix("%"), paneID.dropFirst().allSatisfy(\.isNumber), paneID.count > 1 else {
+            throw APIError.badStatus(400, "Choose a connected pane first.")
+        }
+        let connection = validatedConnection ?? currentConnection
+        guard isCurrentWatchContext(inputContextID, connection: connection) else {
+            throw APIError.badStatus(409, inputContextError)
+        }
+        let boundAPI = api(for: connection)
+        _ = try await boundAPI.sendKeys(text: text, special: special, target: paneID)
+        scheduleWatchInputFollowUp()
+    }
+
     /// Watch requested a refresh — force-send result even if hash unchanged.
     func fetchForWatch() {
+        if DemoData.isDemo, let payload = currentPayload {
+            watchBridge?.send(payload: payload.checked(at: Date()))
+            return
+        }
+        let connection = currentConnection
+        if Date().timeIntervalSince(lastSuccessfulPoll) < min(pollInterval, 1),
+           connectionIdentity == connection, let payload = currentPayload {
+            watchBridge?.send(payload: payload.checked(at: lastSuccessfulPoll), inputContextID: currentPayloadInputContextID)
+            return
+        }
         watchNeedsSync = true
-        consecutiveUnchanged = 0
-        consecutiveErrors = 0
+        // Preserve quiet/error backoff across watch heartbeats. The explicit
+        // request still captures immediately; changed output resets the backoff.
         requestPoll()
     }
 
@@ -137,7 +229,7 @@ final class PollingService {
         watchInputSyncTask?.cancel()
         watchInputSyncTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 350_000_000)
-            guard !Task.isCancelled, !isInBackground else { return }
+            guard !Task.isCancelled else { return }
             watchNeedsSync = true
             consecutiveUnchanged = 0
             consecutiveErrors = 0
@@ -177,22 +269,37 @@ final class PollingService {
 
     /// Called by BGTaskScheduler when the app is woken for a refresh.
     func handleBackgroundRefresh(task: BGAppRefreshTask) {
-        // Only reschedule if terminal was active before backgrounding
-        if consecutiveUnchanged == 0 {
-            scheduleBackgroundRefresh()
-        }
-        task.expirationHandler = { task.setTaskCompleted(success: false) }
-        Task {
-            await requestPollAndWait()
+        configureWatchBridge()
+        guard UserDefaults.standard.bool(forKey: "onboardingComplete"), !DemoData.isDemo else {
             task.setTaskCompleted(success: true)
+            return
+        }
+        isInBackground = UIApplication.shared.applicationState != .active
+        scheduleBackgroundRefresh()
+        var completed = false
+        let work = Task { @MainActor in
+            await requestPollAndWait()
+            guard !completed else { return }
+            completed = true
+            task.setTaskCompleted(success: isConnected && !Task.isCancelled)
+        }
+        task.expirationHandler = { [weak self] in
+            Task { @MainActor in
+                guard !completed else { return }
+                completed = true
+                work.cancel()
+                self?.pollTask?.cancel()
+                self?.pendingPoll = false
+                task.setTaskCompleted(success: false)
+            }
         }
     }
 
     private func startTimer() {
-        guard !isInBackground else { return }
+        guard !isInBackground, !DemoData.isDemo else { return }
         timer?.invalidate()
         let interval = effectiveInterval
-        let t = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+        let t = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor in self.requestPoll() }
         }
@@ -209,12 +316,10 @@ final class PollingService {
 
     /// Restart the timer if the effective interval has changed significantly.
     private func rescheduleIfNeeded() {
-        guard !isInBackground, let timer, timer.isValid else { return }
-        let currentInterval = timer.timeInterval
+        guard started, !isInBackground, !DemoData.isDemo else { return }
         let newInterval = effectiveInterval
-        guard abs(currentInterval - newInterval) > 0.5 else { return }
         self.timer?.invalidate()
-        let t = Timer.scheduledTimer(withTimeInterval: newInterval, repeats: true) { [weak self] _ in
+        let t = Timer.scheduledTimer(withTimeInterval: newInterval, repeats: false) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor in self.requestPoll() }
         }
@@ -224,8 +329,8 @@ final class PollingService {
 
     /// Re-render the terminal output (e.g. after font size or theme change).
     func rerender() {
-        if let cached = CaptureCache.load() {
-            applyPayload(cached)
+        if let cached = currentPayload {
+            applyPayload(cached, inputContextID: currentPayloadInputContextID)
         }
     }
 
@@ -235,11 +340,26 @@ final class PollingService {
     }
 
     func refreshSessions() {
+        let server = UserDefaults.standard.string(forKey: "serverURL") ?? ""
         Task {
             if let resp = try? await api.fetchSessions() {
+                guard server == (UserDefaults.standard.string(forKey: "serverURL") ?? "") else { return }
                 sessions = resp.sessions
+                await refreshWindows(for: resp.sessions, server: server)
             }
         }
+    }
+
+    private func refreshWindows(for sessions: [SessionInfo], server: String) async {
+        var refreshed: [String: [WindowInfoResponse]] = [:]
+        for session in sessions {
+            guard server == (UserDefaults.standard.string(forKey: "serverURL") ?? "") else { return }
+            if let resp = try? await api.fetchWindows(session: session.name) {
+                refreshed[session.name] = resp.windows
+            }
+        }
+        guard server == (UserDefaults.standard.string(forKey: "serverURL") ?? "") else { return }
+        windowsBySession = refreshed
     }
 
     func selectTarget(_ target: String?) {
@@ -247,15 +367,24 @@ final class PollingService {
         lastHash = "" // Force re-render on switch
         consecutiveUnchanged = 0
         consecutiveErrors = 0
+        if isPolling { pendingPoll = true }
         fetchNow()
     }
 
     /// Swipe switch behavior: prefer tmux windows, fall back to sessions when needed.
-    func switchSession(direction rawDirection: Int) async -> (Bool, String?) {
+    func switchSession(direction rawDirection: Int, inputContextID: String?) async -> (Bool, String?) {
+        guard StoreManager.shared.isProUnlocked, !DemoData.isDemo else {
+            return (false, "Connect a terminal and unlock Pro to switch windows.")
+        }
+        let connection = currentConnection
+        guard watchInputContext.accepts(inputContextID, connection: connection) else { return (false, inputContextError) }
+        let boundAPI = api(for: connection)
         let direction = rawDirection >= 0 ? 1 : -1
         do {
             // Always refresh on explicit switch so we do not rely on stale counts.
-            sessions = try await api.fetchSessions().sessions
+            let refreshed = try await boundAPI.fetchSessions().sessions
+            guard isCurrentWatchContext(inputContextID, connection: connection) else { return (false, inputContextError) }
+            sessions = refreshed
         } catch {
             if sessions.isEmpty {
                 return (false, error.localizedDescription)
@@ -263,6 +392,7 @@ final class PollingService {
             logger.notice("Using cached sessions after refresh failure: \(error.localizedDescription, privacy: .public)")
         }
 
+        guard isCurrentWatchContext(inputContextID, connection: connection) else { return (false, inputContextError) }
         let available = sessions.map(\.name)
         guard !available.isEmpty else { return (false, "No tmux sessions found") }
 
@@ -278,12 +408,16 @@ final class PollingService {
         let windowResult = await switchWindowInSession(
             sessionName: sessionName,
             direction: direction,
-            sessionWindowCount: sessionWindowCount
+            sessionWindowCount: sessionWindowCount,
+            connection: connection,
+            inputContextID: inputContextID,
+            boundAPI: boundAPI
         )
         if windowResult.0 {
             return windowResult
         }
 
+        guard isCurrentWatchContext(inputContextID, connection: connection) else { return (false, inputContextError) }
         // If the current session has only one window, fall back to switching sessions.
         guard available.count > 1, isOnlyOneWindowError(windowResult.1) else {
             return windowResult
@@ -299,6 +433,7 @@ final class PollingService {
 
         selectedTarget = nextTarget
         await forceSwitchPoll()
+        guard isCurrentWatchContext(inputContextID, connection: connection) else { return (false, inputContextError) }
 
         if !isConnected {
             return (false, errorMessage ?? "Unable to refresh capture")
@@ -312,11 +447,16 @@ final class PollingService {
     private func switchWindowInSession(
         sessionName: String,
         direction: Int,
-        sessionWindowCount: Int
+        sessionWindowCount: Int,
+        connection: WatchConnectionIdentity,
+        inputContextID: String?,
+        boundAPI: APIClient
     ) async -> (Bool, String?) {
         do {
             let previousWindow = currentPaneWindowIndex
-            let response = try await api.switchWindow(direction: direction, target: sessionName)
+            guard isCurrentWatchContext(inputContextID, connection: connection) else { return (false, inputContextError) }
+            let response = try await boundAPI.switchWindow(direction: direction, target: sessionName)
+            guard isCurrentWatchContext(inputContextID, connection: connection) else { return (false, inputContextError) }
             if let pane = response.pane {
                 currentPaneSession = pane.session
                 currentPaneWindowIndex = pane.winIndex
@@ -327,6 +467,7 @@ final class PollingService {
             }
 
             await forceSwitchPoll()
+            guard isCurrentWatchContext(inputContextID, connection: connection) else { return (false, inputContextError) }
 
             if !isConnected {
                 return (false, errorMessage ?? "Unable to refresh capture")
@@ -336,14 +477,13 @@ final class PollingService {
             }
             return (true, nil)
         } catch let apiError as APIError where apiError.statusCode == 404 {
-            logger.notice("Server missing /switch-window endpoint; using legacy window probing fallback")
+            logger.notice("Server missing /switch-window endpoint; using connection-bound capture probing")
             guard sessionWindowCount > 1 else {
                 return (false, "Only 1 tmux window")
             }
             return await legacySwitchWindowByTargetProbe(
-                sessionName: sessionName,
-                direction: direction,
-                windowCount: sessionWindowCount
+                sessionName: sessionName, direction: direction, windowCount: sessionWindowCount,
+                connection: connection, inputContextID: inputContextID, boundAPI: boundAPI
             )
         } catch {
             return (false, userFacingSwitchError(error.localizedDescription))
@@ -380,6 +520,7 @@ final class PollingService {
         watchNeedsSync = true
         consecutiveUnchanged = 0
         consecutiveErrors = 0
+        if isPolling { pendingPoll = true }
         await requestPollAndWait()
     }
 
@@ -404,66 +545,61 @@ final class PollingService {
     private func legacySwitchWindowByTargetProbe(
         sessionName: String,
         direction: Int,
-        windowCount: Int
+        windowCount: Int,
+        connection: WatchConnectionIdentity,
+        inputContextID: String?,
+        boundAPI: APIClient
     ) async -> (Bool, String?) {
-        let previousTarget = selectedTarget
+        guard isCurrentWatchContext(inputContextID, connection: connection) else { return (false, inputContextError) }
         var previousWindow = currentPaneWindowIndex
         if previousWindow == nil {
-            selectedTarget = sessionName
-            await forceSwitchPoll()
-            if !isConnected {
-                selectedTarget = previousTarget
-                return (false, userFacingSwitchError(errorMessage ?? "Unable to refresh capture"))
+            do {
+                let capture = try await boundAPI.fetchCapture(target: sessionName)
+                guard isCurrentWatchContext(inputContextID, connection: connection) else { return (false, inputContextError) }
+                previousWindow = capture.pane?.winIndex
+            } catch {
+                return (false, userFacingSwitchError(error.localizedDescription))
             }
-            previousWindow = currentPaneWindowIndex
         }
         var lastObservedError: String?
-
         let candidates = windowCandidates(
             current: previousWindow ?? Self.windowIndex(fromTarget: selectedTarget),
-            count: windowCount,
-            direction: direction,
+            count: windowCount, direction: direction,
             preferredBase: preferredWindowBaseBySession[sessionName]
         )
-
         for candidateIndex in candidates {
+            guard isCurrentWatchContext(inputContextID, connection: connection) else { return (false, inputContextError) }
             let candidateTarget = "\(sessionName):\(candidateIndex)"
-            selectedTarget = candidateTarget
-            await forceSwitchPoll()
-
-            if !isConnected {
-                lastObservedError = errorMessage
-                if let message = errorMessage?.lowercased(),
-                   message.contains("proxy")
-                    || message.contains("timed out")
-                    || message.contains("not connected")
-                    || message.contains("network") {
+            do {
+                // Read-only probes use immutable credentials and never change the
+                // global target until a matching result is validated on this phone.
+                let capture = try await boundAPI.fetchCapture(target: candidateTarget)
+                guard isCurrentWatchContext(inputContextID, connection: connection) else { return (false, inputContextError) }
+                guard capture.pane?.session == sessionName, let observedWindow = capture.pane?.winIndex else { continue }
+                if let previousWindow {
+                    guard observedWindow != previousWindow else { continue }
+                } else if observedWindow != candidateIndex {
+                    continue
+                }
+                selectedTarget = candidateTarget
+                if observedWindow == 0 || previousWindow == 0 {
+                    preferredWindowBaseBySession[sessionName] = 0
+                } else if observedWindow == windowCount || previousWindow == windowCount {
+                    preferredWindowBaseBySession[sessionName] = 1
+                }
+                persistPreferredWindowBases()
+                await forceSwitchPoll()
+                guard isCurrentWatchContext(inputContextID, connection: connection) else { return (false, inputContextError) }
+                return isConnected ? (true, nil) : (false, errorMessage ?? "Unable to refresh capture")
+            } catch {
+                guard isCurrentWatchContext(inputContextID, connection: connection) else { return (false, inputContextError) }
+                lastObservedError = userFacingSwitchError(error.localizedDescription)
+                let message = error.localizedDescription.lowercased()
+                if message.contains("proxy") || message.contains("timed out") || message.contains("not connected") || message.contains("network") {
                     break
                 }
-                continue
             }
-            guard currentPaneSession == sessionName else { continue }
-            guard let observedWindow = currentPaneWindowIndex else { continue }
-
-            if let previousWindow {
-                guard observedWindow != previousWindow else { continue }
-            } else if observedWindow != candidateIndex {
-                continue
-            }
-
-            // Keep target on session scope so external tmux focus changes still propagate.
-            selectedTarget = sessionName
-            if observedWindow == 0 || previousWindow == 0 {
-                preferredWindowBaseBySession[sessionName] = 0
-            } else if observedWindow == windowCount || previousWindow == windowCount {
-                preferredWindowBaseBySession[sessionName] = 1
-            }
-            persistPreferredWindowBases()
-            logger.notice("Window switch resolved session=\(sessionName, privacy: .public) win=\(observedWindow, privacy: .public) base=\(self.preferredWindowBaseBySession[sessionName] ?? -1, privacy: .public)")
-            return (true, nil)
         }
-
-        selectedTarget = previousTarget
         return (false, lastObservedError ?? "Window did not change")
     }
 
@@ -532,26 +668,29 @@ final class PollingService {
     }
 
     private func requestPoll() {
-        if isPolling {
-            pendingPoll = true
-            return
-        }
+        guard !DemoData.isDemo else { return }
+        if isPolling { return }
 
         isPolling = true
-        Task { @MainActor in
+        timer?.invalidate()
+        timer = nil
+        pollTask = Task { @MainActor in
             while true {
                 self.pendingPoll = false
                 self.beginBackgroundPollTaskIfNeeded()
                 await self.poll()
                 self.endBackgroundPollTaskIfNeeded()
-                guard self.pendingPoll else { break }
+                guard self.pendingPoll, !Task.isCancelled else { break }
             }
             self.isPolling = false
             self.resumePollWaiters()
+            self.pollTask = nil
+            self.rescheduleIfNeeded()
         }
     }
 
     private func requestPollAndWait() async {
+        guard !DemoData.isDemo else { return }
         await withCheckedContinuation { continuation in
             pollCompletionWaiters.append(continuation)
             requestPoll()
@@ -574,6 +713,8 @@ final class PollingService {
         let app = UIApplication.shared
         activeBackgroundPollTask = app.beginBackgroundTask(withName: "WatchRefreshPoll") { [weak self] in
             guard let self else { return }
+            self.pollTask?.cancel()
+            self.pendingPoll = false
             if self.activeBackgroundPollTask != .invalid {
                 app.endBackgroundTask(self.activeBackgroundPollTask)
                 self.activeBackgroundPollTask = .invalid
@@ -589,32 +730,72 @@ final class PollingService {
 
     private func poll() async {
         do {
+            let connection = currentConnection
+            let boundAPI = api(for: connection)
+            if connectionIdentity != connection {
+                connectionIdentity = connection
+                cachedHostname = nil
+                lastHash = ""
+                lastPaneIDForCommandState = nil
+                lastPaneCommand = nil
+                lastLineWasPrompt = true
+                sessions = []
+                windowsBySession = [:]
+            }
             let target = sanitizedTarget(selectedTarget)
             if target != selectedTarget {
                 selectedTarget = target
             }
-            let capture = try await api.fetchCapture(target: target)
+            let capture = try await boundAPI.fetchCapture(target: target)
+            try Task.checkCancellation()
+            guard target == sanitizedTarget(selectedTarget), connection == currentConnection, !DemoData.isDemo else {
+                pendingPoll = !DemoData.isDemo
+                return
+            }
             currentPaneSession = capture.pane?.session
             currentPaneWindowIndex = capture.pane?.winIndex
             isConnected = true
             errorMessage = nil
             consecutiveErrors = 0
-            if DemoData.isDemo {
-                DemoData.deactivate()
-                stopDemoAnimation()
-            }
-
-            // Only fetch hostname once; also refresh sessions periodically
+            // Fetch hostname once per server; refresh session inventory on demand.
             if cachedHostname == nil {
-                cachedHostname = (try? await api.fetchHealth())?.hostname
+                cachedHostname = (try? await boundAPI.fetchHealth())?.hostname
                 refreshSessions()
             }
+            try Task.checkCancellation()
+            guard target == sanitizedTarget(selectedTarget), connection == currentConnection else {
+                pendingPoll = true
+                return
+            }
+            let inputContextID = watchInputContext.establish(for: connection)
             let host = cachedHostname ?? "unknown"
 
-            let changed = capture.hash != lastHash
+            let sourcePayload = WatchPayload.from(capture: capture, host: host).checked(at: Date())
+            let changed = sourcePayload.renderIdentity != lastHash || CaptureDisplayPolicy.requiresReplacement(
+                acceptedIdentity: sourcePayload.renderIdentity,
+                displayedIdentity: currentPayload?.renderIdentity,
+                acceptedContextID: inputContextID,
+                displayedContextID: currentPayloadInputContextID
+            )
             let needsWatchSync = watchNeedsSync
-            lastHash = capture.hash
+            lastHash = sourcePayload.renderIdentity
             lastUpdate = Date()
+            lastSuccessfulPoll = Date()
+
+            // Track command state on every successful sample, including unchanged
+            // terminal text and pane switches. Never notify merely for changing panes.
+            let samePane = lastPaneIDForCommandState == capture.pane?.paneId
+            let currentIsPrompt = NotificationService.isPromptLine(lastNonEmptyLine(from: capture.parsedLines))
+            let promptFinished = samePane && !lastLineWasPrompt && currentIsPrompt
+            lastLineWasPrompt = currentIsPrompt
+            let commandTransition = detectCommandFinishedByPaneCommand(capture.pane)
+            let commandFinished = (promptFinished || commandTransition)
+                && UserDefaults.standard.bool(forKey: "notificationsEnabled")
+
+            if commandFinished, let pane = capture.pane {
+                NotificationService.notifyCommandFinished(session: pane.session, windowIndex: pane.winIndex,
+                    window: pane.winName, outputLines: capture.parsedLines.map { $0.map(\.t).joined() })
+            }
 
             // Track consecutive unchanged polls for idle backoff
             if changed {
@@ -622,51 +803,31 @@ final class PollingService {
             } else {
                 consecutiveUnchanged += 1
             }
-            rescheduleIfNeeded()
 
             // Skip re-render if nothing changed on iPhone side
             guard changed else {
-                // Even if hash didn't change, sync to watch if it needs fresh data
-                if needsWatchSync {
+                // Displayed identity and authority already match this accepted
+                // capture. Renewed authority or demo/cache exits take applyPayload
+                // below so a stale pane can never acquire fresh input authority.
+                if needsWatchSync || commandFinished {
                     watchNeedsSync = false
-                    let payload = compactPayload(WatchPayload.from(capture: capture, host: host))
-                    watchBridge?.send(payload: payload)
+                    let payload = compactPayload(sourcePayload)
+                    watchBridge?.send(payload: payload, commandFinished: commandFinished, inputContextID: inputContextID)
                 }
                 return
             }
 
             watchNeedsSync = false
-            let payload = compactPayload(WatchPayload.from(capture: capture, host: host))
-            applyPayload(payload)
+            let payload = compactPayload(sourcePayload)
+            applyPayload(payload, inputContextID: inputContextID)
 
             // Save cache off the main thread to avoid disk I/O during scrolling
-            let payloadCopy = payload
-            Task.detached { CaptureCache.save(payloadCopy) }
+            CaptureCache.save(payload)
 
-            // Detect command-finished using both:
-            // 1) prompt reappears
-            // 2) tmux pane command transitions from non-shell -> shell
-            let lastLine = lastNonEmptyLine(from: capture.parsedLines)
-            let currentIsPrompt = NotificationService.isPromptLine(lastLine)
-            let commandFinishedByPrompt = !lastLineWasPrompt && currentIsPrompt
-            lastLineWasPrompt = currentIsPrompt
-            let commandFinishedByCommandTransition = detectCommandFinishedByPaneCommand(capture.pane)
-            let commandFinished = commandFinishedByPrompt || commandFinishedByCommandTransition
+            watchBridge?.send(payload: payload, commandFinished: commandFinished, inputContextID: inputContextID)
 
-            watchBridge?.send(payload: payload, commandFinished: commandFinished)
-
-            if commandFinished, let pane = capture.pane {
-                let allLines = capture.parsedLines.map { line in
-                    line.map(\.t).joined()
-                }
-                NotificationService.notifyCommandFinished(
-                    session: pane.session,
-                    windowIndex: pane.winIndex,
-                    window: pane.winName,
-                    outputLines: allLines
-                )
-            }
         } catch {
+            guard !Task.isCancelled else { return }
             isConnected = false
             errorMessage = error.localizedDescription
             consecutiveErrors += 1
@@ -674,18 +835,14 @@ final class PollingService {
         }
     }
 
-    private static let isoFormatter: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        return f
-    }()
-
-    private func applyPayload(_ payload: WatchPayload) {
-        let size = CGFloat(UserDefaults.standard.integer(forKey: "fontSize").clamped(to: 8...16, default: 11))
-        renderedLines = RunsRenderer.buildLines(from: payload.runs, fontSize: size)
+    private func applyPayload(_ payload: WatchPayload, inputContextID: String? = nil) {
+        currentPayload = payload
+        currentPayloadInputContextID = inputContextID
+        renderedLines = RunsRenderer.buildLines(from: payload.runs, fontSize: renderedFontSize)
         sessionLabel = "\(payload.session):\(payload.winName)"
         // Restore timestamp from payload if we don't have a live one yet
         if lastUpdate == nil {
-            lastUpdate = Self.isoFormatter.date(from: payload.ts)
+            lastUpdate = TerminalTimestamp.date(from: payload.ts)
         }
     }
 
@@ -744,20 +901,20 @@ final class PollingService {
     private static let maxPayloadRunsPerLine = 180
     private static let maxPayloadCharsPerLine = 512
 
-    /// Bound payload size to keep rendering/cache/WatchConnectivity stable.
+    /// Bound payload size to keep rendering/cache/WatchConnectivity stable while
+    /// preserving the newest terminal output. Older lines are dropped silently.
     private func compactPayload(_ payload: WatchPayload) -> WatchPayload {
-        var didTruncate = payload.runs.count > Self.maxPayloadLines
         var compactRuns: [[TerminalRun]] = []
-        compactRuns.reserveCapacity(min(payload.runs.count, Self.maxPayloadLines))
+        let sourceLines = payload.runs.suffix(Self.maxPayloadLines)
+        compactRuns.reserveCapacity(sourceLines.count)
 
-        for line in payload.runs.prefix(Self.maxPayloadLines) {
+        for line in sourceLines {
             var remainingChars = Self.maxPayloadCharsPerLine
             var compactLine: [TerminalRun] = []
             compactLine.reserveCapacity(min(line.count, Self.maxPayloadRunsPerLine))
 
             for run in line.prefix(Self.maxPayloadRunsPerLine) {
                 if remainingChars <= 0 {
-                    didTruncate = true
                     break
                 }
                 if run.t.isEmpty {
@@ -772,22 +929,10 @@ final class PollingService {
                         TerminalRun(t: clipped, fg: run.fg, bg: run.bg, b: run.b, d: run.d, i: run.i, u: run.u)
                     )
                     remainingChars = 0
-                    didTruncate = true
                 }
             }
 
-            if line.count > Self.maxPayloadRunsPerLine {
-                didTruncate = true
-            }
             compactRuns.append(compactLine)
-        }
-
-        if didTruncate {
-            if compactRuns.isEmpty {
-                compactRuns = [[TerminalRun(t: "[output truncated]")]]
-            } else {
-                compactRuns[compactRuns.count - 1].append(TerminalRun(t: " [output truncated]"))
-            }
         }
 
         return WatchPayload(
@@ -820,7 +965,19 @@ final class PollingService {
     // MARK: - Demo Animation
 
     func startDemoAnimation() {
+        timer?.invalidate()
+        timer = nil
+        pollTask?.cancel()
+        pendingPoll = false
         stopDemoAnimation()
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "demoSnapshot") {
+            applyPayload(DemoData.payload)
+            lastUpdate = Date()
+            watchBridge?.send(payload: DemoData.payload)
+            return
+        }
+        #endif
         demoTask = Task { await runDemoLoop() }
     }
 
@@ -856,7 +1013,7 @@ final class PollingService {
 
             // Send final frame to watch
             let payload = DemoData.payload
-            Task.detached { CaptureCache.save(payload) }
+            CaptureCache.save(payload)
             watchBridge?.send(payload: payload)
 
             // Hold the completed terminal for a few seconds
@@ -896,8 +1053,7 @@ final class PollingService {
     }
 
     private func renderDemoFrame(_ runs: [[TerminalRun]]) {
-        let size = CGFloat(UserDefaults.standard.integer(forKey: "fontSize").clamped(to: 8...16, default: 11))
-        renderedLines = RunsRenderer.buildLines(from: runs, fontSize: size)
+        renderedLines = RunsRenderer.buildLines(from: runs, fontSize: renderedFontSize)
         lastUpdate = Date()
 
         // Stream to watch, throttled to ~2 updates/sec
@@ -908,9 +1064,11 @@ final class PollingService {
                 host: "macbook",
                 ts: ISO8601DateFormatter().string(from: now),
                 session: "dev", winIndex: 0, winName: "build", paneId: "%0",
-                hash: "demo-\(runs.count)",
+                hash: "demo-\(UUID().uuidString)",
                 runs: runs
             )
+            currentPayload = payload
+            currentPayloadInputContextID = nil
             watchBridge?.send(payload: payload)
         }
     }
