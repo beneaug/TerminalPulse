@@ -38,20 +38,22 @@ jobs:
       - name: Test networking, refresh policy, and models
         run: swift test
 
-      - name: Build iOS App
+      - name: Build iOS App (Debug)
         run: |
           xcodebuild \
             -project TerminalPulse/TerminalPulse.xcodeproj \
             -scheme TerminalPulse \
+            -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             build
 
-      - name: Build watchOS App
+      - name: Build watchOS App (Debug)
         run: |
           xcodebuild \
             -project TerminalPulse/TerminalPulse.xcodeproj \
             -scheme TerminalPulseWatch \
+            -configuration Debug \
             -destination 'generic/platform=watchOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             build
