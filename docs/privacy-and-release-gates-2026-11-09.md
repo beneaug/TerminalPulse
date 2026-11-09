@@ -1,6 +1,6 @@
 # Privacy, deliberate input, and release gates
 
-This is a local development candidate, not a published release. It continues
+This is a draft development candidate, not a published release. It continues
 `codex/efficiency-and-design` from `2af6746`. Do not describe the changes below as
 shipped or use historical screenshots as evidence of the current interface.
 
@@ -59,13 +59,28 @@ A moved Swift module cache initially failed with an absolute-path PCH error;
 a fresh scratch directory passed. An initial system-Python invocation failed dependency type
 evaluation; rerunning in the existing supported Python environment passed.
 
+## Verified remote CI
+
+[CI run 42673616824, attempt 2](https://github.com/beneaug/TerminalPulse/actions/runs/42673616824)
+passed for implementation commit `e9226509f435d7158df5fd332b1dfec3ffad1c3f`:
+
+- 67 Python tests on Linux, including dependency installation and compilation.
+- 36 Swift core tests on macOS.
+- Full unsigned Debug iOS Simulator and watchOS Simulator builds.
+
+The first attempt failed before creating jobs with a GitHub internal server
+error. The retry passed without implementation changes. Compilation is not
+runtime, visual, physical-device, Release, archive, or signing validation.
+The [draft PR](https://github.com/beneaug/TerminalPulse/pull/1) records checks for
+subsequent documentation-only commits separately.
+
 ## Current release blockers
 
-1. **Full Apple builds and real screenshots are not run.** Local build resources
-   are currently constrained. Run CI and use a suitable Apple development
-   environment for simulator and device validation before release.
-2. **Current UI and lifecycle proof.** Build both Debug and Release iPhone/Watch
-   targets. Capture the same viewport, safe demo data and state at the baseline
+1. **Release builds and distribution artifacts remain unverified.** Debug
+   simulator CI builds pass; Release configuration, device builds, archive/export
+   and signing still require validation.
+2. **Current UI and lifecycle proof.** Run the final iPhone/Watch candidate and
+   capture the same viewport, safe demo data and state at the baseline
    and final candidate. Exercise inactive/app switcher, presented sheets, locked
    phone, Watch wrist-down/Always On, accessibility trees, interrupted composer,
    long held keys, Reading/Latest scroll position, server/token changes, restart,
@@ -89,8 +104,9 @@ evaluation; rerunning in the existing supported Python environment passed.
    Verify legal/support URLs, update stale March submission instructions and
    release notes, and use final-build screenshots in the required device classes.
 
-No archive, upload, submission, deployment, push, hook installation, or live
-notification has been performed in this pass. Shipping authorization does not
+The candidate was pushed to an isolated feature branch and a draft PR was
+opened for CI. No archive, binary upload, submission, deployment, hook
+installation, or live notification has been performed in this pass. Shipping authorization does not
 replace these validation gates or any required agreement/credential approval.
 
 ## Accurate promotional statements

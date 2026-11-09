@@ -56,20 +56,28 @@ configuration, privacy and delivery limitations.
 
 ## Validation and remaining gates
 
-Final checks: 67 Python tests and 25 Swift package tests passed. The installer
+Final checks: 67 Python tests and 36 Swift package tests passed. The installer
 passes `bash -n`; changed iOS sources pass Swift syntax parsing; localization
-JSON and `git diff --check` pass. These are offline checks, not a full app build.
+JSON and `git diff --check` pass.
+
+[CI run 42673616824, attempt 2](https://github.com/beneaug/TerminalPulse/actions/runs/42673616824)
+verified implementation commit `e9226509f435d7158df5fd332b1dfec3ffad1c3f` with
+67 Python tests on Linux, 36 Swift core tests on macOS, and full unsigned Debug
+iOS Simulator and watchOS Simulator builds. The first attempt encountered a
+GitHub internal server error before jobs started; the retry passed without
+implementation changes. The [draft PR](https://github.com/beneaug/TerminalPulse/pull/1)
+records checks for subsequent documentation-only commits separately.
 
 Offline Python/Swift checks cover event normalization, malformed/oversized input,
 privacy, neutral hook responses, recipient-isolated queues, interruption recovery,
 relay receipts, session/capture readiness and cancellation. No test sends a real
 notification or installs an agent hook.
 
-Full Apple app builds and interactive UI validation are not complete. Local
-build resources are currently constrained. Genuine matching before/after screenshots of
-the setup/status text changes are therefore still required, not substituted with
-mockups or historical screenshots. Run the final candidate on the same simulator
-viewport in a suitable Apple development environment.
+Debug simulator compilation passes, but interactive UI and lifecycle validation
+remain incomplete. Genuine matching before/after screenshots of the setup/status
+text changes are still required, not substituted with mockups or historical
+screenshots. Run the final candidate on the same simulator viewport. Release
+configuration, physical-device builds, archive/export and signing remain unverified.
 
 Then complete the September candidate's physical paired-device battery,
 background delivery, StoreKit, accessibility/localization and old/new server
