@@ -55,3 +55,23 @@ jobs:
             -destination 'generic/platform=watchOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+      - name: Build iOS App (Release)
+        run: |
+          xcodebuild \
+            -project TerminalPulse/TerminalPulse.xcodeproj \
+            -scheme TerminalPulse \
+            -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Build watchOS App (Release)
+        run: |
+          xcodebuild \
+            -project TerminalPulse/TerminalPulse.xcodeproj \
+            -scheme TerminalPulseWatch \
+            -configuration Release \
+            -destination 'generic/platform=watchOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
