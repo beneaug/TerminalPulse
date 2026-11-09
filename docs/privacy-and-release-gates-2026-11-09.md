@@ -70,15 +70,16 @@ passed for implementation commit `e9226509f435d7158df5fd332b1dfec3ffad1c3f`:
 
 The first attempt failed before creating jobs with a GitHub internal server
 error. The retry passed without implementation changes. Compilation is not
-runtime, visual, physical-device, Release, archive, or signing validation.
-The [draft PR](https://github.com/beneaug/TerminalPulse/pull/1) records checks for
-subsequent documentation-only commits separately.
+runtime, visual, physical-device, archive, or signing validation.
+The current workflow checks both unsigned Debug and Release simulator builds
+for iPhone and Watch. The [draft PR](https://github.com/beneaug/TerminalPulse/pull/1)
+records the exact current commit and results, including the added Release checks.
 
 ## Current release blockers
 
-1. **Release builds and distribution artifacts remain unverified.** Debug
-   simulator CI builds pass; Release configuration, device builds, archive/export
-   and signing still require validation.
+1. **Distribution artifacts remain unverified.** CI covers unsigned Debug and
+   Release simulator compilation; check the final PR commit results. Physical
+   device builds, archive/export and signing still require validation.
 2. **Current UI and lifecycle proof.** Run the final iPhone/Watch candidate and
    capture the same viewport, safe demo data and state at the baseline
    and final candidate. Exercise inactive/app switcher, presented sheets, locked

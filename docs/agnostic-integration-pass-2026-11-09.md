@@ -66,7 +66,8 @@ verified implementation commit `e9226509f435d7158df5fd332b1dfec3ffad1c3f` with
 iOS Simulator and watchOS Simulator builds. The first attempt encountered a
 GitHub internal server error before jobs started; the retry passed without
 implementation changes. The [draft PR](https://github.com/beneaug/TerminalPulse/pull/1)
-records checks for subsequent documentation-only commits separately.
+records exact current-commit results. The current workflow covers both unsigned
+Debug and Release iPhone and Watch simulator builds.
 
 Offline Python/Swift checks cover event normalization, malformed/oversized input,
 privacy, neutral hook responses, recipient-isolated queues, interruption recovery,
@@ -76,8 +77,9 @@ notification or installs an agent hook.
 Debug simulator compilation passes, but interactive UI and lifecycle validation
 remain incomplete. Genuine matching before/after screenshots of the setup/status
 text changes are still required, not substituted with mockups or historical
-screenshots. Run the final candidate on the same simulator viewport. Release
-configuration, physical-device builds, archive/export and signing remain unverified.
+screenshots. Run the final candidate on the same simulator viewport. CI includes
+Release simulator compilation; verify the final PR checks. Physical-device builds,
+archive/export and signing remain unverified.
 
 Then complete the September candidate's physical paired-device battery,
 background delivery, StoreKit, accessibility/localization and old/new server
