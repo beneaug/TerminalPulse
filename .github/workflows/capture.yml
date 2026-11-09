@@ -8,7 +8,7 @@ permissions:
 jobs:
   capture:
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,149 +21,70 @@ jobs:
           fetch-depth: 1
           path: baseline
           sparse-checkout: TerminalPulse
-      - name: Inspect installed runtimes and disk
-        run: |
-          mkdir -p capture
-          # Prefer the preinstalled Xcode matching the newest installed runtime.
-          # This selects an existing toolchain; it does not install or change the host default.
-          ls -d /Applications/Xcode*.app > capture/installed-xcodes.txt
-          if [ -d /Applications/Xcode_26.5.app/Contents/Developer ]; then
-            export DEVELOPER_DIR=/Applications/Xcode_26.5.app/Contents/Developer
-            echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
-          fi
-          xcodebuild -version | tee capture/xcode.txt
-          df -h | tee capture/disk.txt
-          xcrun simctl list runtimes -j > capture/runtimes.json
-          xcrun simctl list devices available -j > capture/devices.json
-          python3 - <<'PY'
-          import json, os
-          data=json.load(open('capture/devices.json'))['devices']
-          phones=[(runtime,d) for runtime,ds in data.items() if '.iOS-' in runtime for d in ds if d['name'].startswith('iPhone') and d.get('isAvailable')]
-          watches=[(runtime,d) for runtime,ds in data.items() if '.watchOS-' in runtime for d in ds if d['name'].startswith('Apple Watch') and d.get('isAvailable')]
-          if not phones: raise SystemExit('No preinstalled available iPhone runtime; no downloads permitted.')
-          version=lambda x: tuple(int(n) for n in x[0].split('-')[1:])
-          phones.sort(key=lambda x: (version(x), 'Pro Max' in x[1]['name'], x[1]['name']), reverse=True)
-          watches.sort(key=lambda x: (version(x), '46mm' in x[1]['name']), reverse=True)
-          phone=phones[0]
-          watch=watches[0] if watches else None
-          json.dump({'phone':phone,'watch':watch,'baseline':'2af6746a68c7c89dbd87af229aaa631f53321803','baseline_label':'September source baseline, not a released binary','candidate':os.environ['CANDIDATE_SHA'],'data':'built-in demo mode; static images use existing DEBUG demoSnapshot fixture (Watch Pro controls are fixture only, no purchase/input validation); movie uses ordinary demo animation; notifications and remote push disabled'},open('capture/provenance.json','w'),indent=2)
-          with open(os.environ['GITHUB_ENV'],'a') as f:
-            f.write('PHONE='+phone[1]['udid']+'\n')
-            if watch: f.write('WATCH='+watch[1]['udid']+'\n')
-          if not watch: print('No preinstalled available watchOS runtime; watch capture unavailable.')
-          PY
+      - name: Capture phone demo using existing runtime
         env:
           CANDIDATE_SHA: ${{ github.event.pull_request.head.sha }}
-      - name: Boot available simulators
         run: |
-          python3 - <<'PYBOOT'
-          import os, subprocess
-          phone=os.environ['PHONE']; watch=os.environ.get('WATCH')
-          if watch:
-            subprocess.run(['xcrun','simctl','pair',watch,phone],timeout=60,check=False)
-          subprocess.run(['xcrun','simctl','boot',phone],timeout=60,check=False)
-          subprocess.run(['xcrun','simctl','bootstatus',phone,'-b'],timeout=480,check=True)
-          subprocess.run(['xcrun','simctl','status_bar',phone,'override','--time','9:41','--dataNetwork','wifi','--wifiMode','active','--wifiBars','3','--batteryState','charged','--batteryLevel','100'],timeout=30,check=False)
-          if watch:
+          python3 - <<'PY'
+          import json, os, pathlib, signal, subprocess, time
+          out=pathlib.Path('capture'); out.mkdir()
+          if pathlib.Path('/Applications/Xcode_26.5.app/Contents/Developer').is_dir():
+            os.environ['DEVELOPER_DIR']='/Applications/Xcode_26.5.app/Contents/Developer'
+          def run(args, timeout=60, check=True, log=None):
+            print('RUN', ' '.join(map(str,args)), flush=True)
+            if log:
+              with open(log,'w') as f: return subprocess.run(args, timeout=timeout, check=check, stdout=f, stderr=subprocess.STDOUT)
+            return subprocess.run(args, timeout=timeout, check=check, capture_output=True, text=True)
+          def sim(*args, timeout=60, check=True): return run(['xcrun','simctl',*args],timeout=timeout,check=check)
+          (out/'xcode.txt').write_text(run(['xcodebuild','-version']).stdout)
+          (out/'disk.txt').write_text(run(['df','-h']).stdout)
+          runtimes=sim('list','runtimes','-j').stdout; (out/'runtimes.json').write_text(runtimes)
+          devices=sim('list','devices','available','-j').stdout; (out/'devices.json').write_text(devices)
+          phones=[(r,d) for r,ds in json.loads(devices)['devices'].items() if '.iOS-' in r for d in ds if d['name'].startswith('iPhone') and d.get('isAvailable')]
+          phones.sort(key=lambda x:(tuple(map(int,x[0].split('-')[1:])), 'Pro Max' in x[1]['name'],x[1]['name']),reverse=True)
+          if not phones: raise SystemExit('No preinstalled iOS simulator runtime. No installation attempted.')
+          runtime,device=phones[0]; phone=device['udid']
+          provenance={'phone':device['name'],'runtime':runtime,'baseline':'2af6746a68c7c89dbd87af229aaa631f53321803','baseline_label':'September source baseline, not released binary','candidate':os.environ['CANDIDATE_SHA'],'static':'Existing DEBUG demoSnapshot fixture, no Pro override','video':'Built-in ordinary demo animation, not live host','limitations':'Phone terminal only. No Settings or Watch interaction validation. No status-bar override. No purchases or real input.'}
+          (out/'provenance.json').write_text(json.dumps(provenance,indent=2))
+          sim('boot',phone,check=False)
+          sim('bootstatus',phone,'-b',timeout=420)
+          bundle='com.augustbenedikt.TerminalPulse'
+          baseargs=['-onboardingComplete','YES','-isDemoMode','YES','-remotePushEnabled','NO','-notificationsEnabled','NO','-AppleLanguages','(en)','-AppleLocale','en_US']
+          results={}
+          # Candidate first; preserve it even if historical baseline fails.
+          for ref in ['candidate','baseline']:
+            dest=out/ref; dest.mkdir()
             try:
-              subprocess.run(['xcrun','simctl','boot',watch],timeout=60,check=False)
-              subprocess.run(['xcrun','simctl','bootstatus',watch,'-b'],timeout=180,check=True)
-              subprocess.run(['xcrun','simctl','status_bar',watch,'override','--time','9:41'],timeout=30,check=False)
-            except (subprocess.TimeoutExpired,subprocess.CalledProcessError) as error:
-              open('capture/watch-boot-warning.txt','w').write(str(error))
-              with open(os.environ['GITHUB_ENV'],'a') as f: f.write('WATCH=\n')
-          PYBOOT
-      - name: Prepare isolated UI capture harness
-        run: |
-          mkdir -p CaptureHarness.xcodeproj
-          cat > CaptureTests.swift <<'SWIFT'
-          import XCTest
-          final class CaptureTests: XCTestCase {
-              func save(_ name: String) {
-                  let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-                  attachment.name = name
-                  attachment.lifetime = .keepAlways
-                  add(attachment)
-              }
-              func testSettingsScreens() throws {
-                  continueAfterFailure = false
-                  let app = XCUIApplication(bundleIdentifier: "com.augustbenedikt.TerminalPulse")
-                  app.launchArguments = ["-onboardingComplete", "YES", "-isDemoMode", "YES", "-demoSnapshot", "YES", "-remotePushEnabled", "NO", "-notificationsEnabled", "NO", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
-                  app.launch()
-                  XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 30))
-                  app.tabBars.buttons["Settings"].tap()
-                  sleep(2)
-                  save("settings-top")
-                  let privacy = app.switches["Protect screen previews"]
-                  for _ in 0..<3 {
-                      if privacy.exists && privacy.isHittable { break }
-                      app.swipeUp()
-                      sleep(1)
-                      save("settings-scroll")
-                  }
-                  if privacy.exists && privacy.isHittable {
-                      save("privacy-controls-defaults")
-                  }
-              }
-          }
-          SWIFT
-          cat > CaptureHarness.xcodeproj/project.pbxproj <<'PBX'
-          // !$*UTF8*$!
-          { archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
-          A00000000000000000000001 = {isa = PBXProject; buildConfigurationList = A00000000000000000000002; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; mainGroup = A00000000000000000000003; productRefGroup = A00000000000000000000004; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000005,); };
-          A00000000000000000000002 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000006,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug;};
-          A00000000000000000000003 = {isa = PBXGroup; children = (A00000000000000000000007,A00000000000000000000004,); sourceTree = "<group>";};
-          A00000000000000000000004 = {isa = PBXGroup; children = (A00000000000000000000008,); name = Products; sourceTree = "<group>";};
-          A00000000000000000000005 = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000009; buildPhases = (A00000000000000000000010,A00000000000000000000011,); buildRules = (); dependencies = (); name = CaptureTests; productName = CaptureTests; productReference = A00000000000000000000008; productType = "com.apple.product-type.bundle.ui-testing";};
-          A00000000000000000000006 = {isa = XCBuildConfiguration; buildSettings = {SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 18.0; SWIFT_VERSION = 5.0;}; name = Debug;};
-          A00000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureTests.swift; sourceTree = "<group>";};
-          A00000000000000000000008 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CaptureTests.xctest; sourceTree = BUILT_PRODUCTS_DIR;};
-          A00000000000000000000009 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000012,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug;};
-          A00000000000000000000010 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000013,); runOnlyForDeploymentPostprocessing = 0;};
-          A00000000000000000000011 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
-          A00000000000000000000012 = {isa = XCBuildConfiguration; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.example.tmuxonwatch.CaptureTests; PRODUCT_NAME = "$(TARGET_NAME)"; GENERATE_INFOPLIST_FILE = YES; CODE_SIGNING_ALLOWED = NO; TARGETED_DEVICE_FAMILY = 1; SWIFT_VERSION = 5.0;}; name = Debug;};
-          A00000000000000000000013 = {isa = PBXBuildFile; fileRef = A00000000000000000000007;};
-          }; rootObject = A00000000000000000000001; }
-          PBX
-      - name: Build and capture baseline and candidate
-        run: |
-          set -euo pipefail
-          BUNDLE=com.augustbenedikt.TerminalPulse
-          for REF in baseline candidate; do
-            mkdir -p "capture/$REF"
-            xcodebuild -project "$REF/TerminalPulse/TerminalPulse.xcodeproj" -scheme TerminalPulse -configuration Debug -destination "generic/platform=iOS Simulator" -derivedDataPath "build-$REF" CODE_SIGNING_ALLOWED=NO build > "capture/$REF/build.log" 2>&1
-            xcrun simctl uninstall "$PHONE" "$BUNDLE" >/dev/null 2>&1 || true
-            xcrun simctl install "$PHONE" "build-$REF/Build/Products/Debug-iphonesimulator/TerminalPulse.app"
-            xcrun simctl launch "$PHONE" "$BUNDLE" -onboardingComplete YES -isDemoMode YES -demoSnapshot YES -remotePushEnabled NO -notificationsEnabled NO -AppleLanguages '(en)' -AppleLocale en_US
-            sleep 12
-            xcrun simctl io "$PHONE" screenshot "capture/$REF/phone-terminal.png"
-            xcrun simctl terminate "$PHONE" "$BUNDLE"
-            xcrun simctl launch "$PHONE" "$BUNDLE" -onboardingComplete YES -isDemoMode YES -demoSnapshot NO -remotePushEnabled NO -notificationsEnabled NO -AppleLanguages '(en)' -AppleLocale en_US
-            sleep 2
-            xcrun simctl io "$PHONE" recordVideo --codec=h264 "capture/$REF/phone-demo.mp4" > "capture/$REF/record.log" 2>&1 &
-            RECORD_PID=$!
-            sleep 25
-            kill -INT "$RECORD_PID"
-            wait "$RECORD_PID" || true
-            if [ -n "${WATCH:-}" ]; then
-              (
-              xcodebuild -project "$REF/TerminalPulse/TerminalPulse.xcodeproj" -scheme TerminalPulseWatch -configuration Debug -destination "generic/platform=watchOS Simulator" -derivedDataPath "watch-$REF" CODE_SIGNING_ALLOWED=NO build > "capture/$REF/watch-build.log" 2>&1
-              xcrun simctl uninstall "$WATCH" "$BUNDLE.watchkitapp" >/dev/null 2>&1 || true
-              xcrun simctl install "$WATCH" "watch-$REF/Build/Products/Debug-watchsimulator/TerminalPulseWatch.app"
-              xcrun simctl launch "$WATCH" "$BUNDLE.watchkitapp" -demoSnapshot YES
-              sleep 15
-              xcrun simctl io "$WATCH" screenshot "capture/$REF/watch-terminal.png"
-              ) || echo "Watch capture failed; phone evidence preserved." > "capture/$REF/watch-warning.txt"
-            fi
-            xcrun simctl terminate "$PHONE" "$BUNDLE" || true
-            xcodebuild -project CaptureHarness.xcodeproj -scheme CaptureTests -configuration Debug -destination "id=$PHONE" -derivedDataPath harness-build -resultBundlePath "capture/$REF/settings.xcresult" -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test > "capture/$REF/ui-test.log" 2>&1 || echo 'UI harness failed; inspect logs. Terminal media remains valid.' | tee "capture/$REF/ui-harness-warning.txt"
-            xcrun xcresulttool export attachments --path "capture/$REF/settings.xcresult" --output-path "capture/$REF/settings-attachments" || true
-            xcrun simctl terminate "$PHONE" "$BUNDLE" || true
-            if [ -n "${WATCH:-}" ]; then xcrun simctl terminate "$WATCH" "$BUNDLE.watchkitapp" || true; fi
-          done
+              run(['xcodebuild','-project',f'{ref}/TerminalPulse/TerminalPulse.xcodeproj','-scheme','TerminalPulse','-configuration','Debug','-destination','generic/platform=iOS Simulator','-derivedDataPath',f'build-{ref}','CODE_SIGNING_ALLOWED=NO','build'],timeout=300,log=dest/'build.log')
+              sim('terminate',phone,bundle,check=False,timeout=30)
+              sim('uninstall',phone,bundle,check=False,timeout=60)
+              sim('install',phone,f'build-{ref}/Build/Products/Debug-iphonesimulator/TerminalPulse.app',timeout=90)
+              sim('launch',phone,bundle,*baseargs,'-demoSnapshot','YES',timeout=60)
+              time.sleep(8)
+              sim('io',phone,'screenshot',str(dest/'phone-terminal.png'),timeout=60)
+              sim('terminate',phone,bundle,check=False,timeout=30)
+              sim('launch',phone,bundle,*baseargs,'-demoSnapshot','NO',timeout=60)
+              time.sleep(2)
+              with open(dest/'record.log','w') as log:
+                proc=subprocess.Popen(['xcrun','simctl','io',phone,'recordVideo','--codec=h264',str(dest/'phone-demo.mp4')],stdout=log,stderr=subprocess.STDOUT)
+                try:
+                  time.sleep(25)
+                  proc.send_signal(signal.SIGINT)
+                  proc.wait(timeout=30)
+                except BaseException:
+                  proc.kill(); proc.wait(timeout=10); raise
+              results[ref]='Media captured; requires visual review'
+            except (subprocess.SubprocessError,OSError) as error:
+              results[ref]=str(error)
+              (dest/'failure.txt').write_text(str(error))
+            finally:
+              (out/'results.json').write_text(json.dumps(results,indent=2))
+          print(json.dumps(results,indent=2))
+          if not (out/'candidate'/'phone-terminal.png').is_file(): raise SystemExit('Candidate capture failed; diagnostics preserved.')
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: genuine-demo-simulator-captures
+          name: genuine-phone-demo-captures
           path: capture
           retention-days: 14
