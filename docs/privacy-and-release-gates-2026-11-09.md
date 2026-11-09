@@ -66,7 +66,7 @@ passed for implementation commit `e9226509f435d7158df5fd332b1dfec3ffad1c3f`:
 
 - 67 Python tests on Linux, including dependency installation and compilation.
 - 36 Swift core tests on macOS.
-- Full unsigned Debug iOS Simulator and watchOS Simulator builds.
+- Full unsigned iOS Simulator and watchOS Simulator builds.
 
 The first attempt failed before creating jobs with a GitHub internal server
 error. The retry passed without implementation changes. Compilation is not

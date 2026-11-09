@@ -62,7 +62,7 @@ JSON and `git diff --check` pass.
 
 [CI run 42673616824, attempt 2](https://github.com/beneaug/TerminalPulse/actions/runs/42673616824)
 verified implementation commit `e9226509f435d7158df5fd332b1dfec3ffad1c3f` with
-67 Python tests on Linux, 36 Swift core tests on macOS, and full unsigned Debug
+67 Python tests on Linux, 36 Swift core tests on macOS, and full unsigned
 iOS Simulator and watchOS Simulator builds. The first attempt encountered a
 GitHub internal server error before jobs started; the retry passed without
 implementation changes. The [draft PR](https://github.com/beneaug/TerminalPulse/pull/1)
@@ -74,7 +74,7 @@ privacy, neutral hook responses, recipient-isolated queues, interruption recover
 relay receipts, session/capture readiness and cancellation. No test sends a real
 notification or installs an agent hook.
 
-Debug simulator compilation passes, but interactive UI and lifecycle validation
+Unsigned simulator compilation passes, but interactive UI and lifecycle validation
 remain incomplete. Genuine matching before/after screenshots of the setup/status
 text changes are still required, not substituted with mockups or historical
 screenshots. Run the final candidate on the same simulator viewport. CI includes
