@@ -362,7 +362,12 @@ struct SettingsView: View {
     // MARK: - Pro Upgrade
 
     struct ProUpgradeRow: View {
+        let showsDescription: Bool
         private var store = StoreManager.shared
+
+        init(showsDescription: Bool = true) {
+            self.showsDescription = showsDescription
+        }
 
         var body: some View {
             if store.isProUnlocked {
@@ -375,9 +380,11 @@ struct SettingsView: View {
                 }
             } else {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Reply from your Apple Watch or iPhone. Dictate, send keys, and save your frequently used commands on iPhone.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if showsDescription {
+                        Text("Reply from your Apple Watch or iPhone. Dictate, send keys, and save your frequently used commands on iPhone.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
 
                     Button {
                         Task { await store.purchase() }
@@ -401,6 +408,7 @@ struct SettingsView: View {
                     }
                     .disabled(store.purchaseState == .purchasing || store.purchaseState == .restoring)
                     .buttonStyle(.borderedProminent)
+                    .foregroundStyle(.black)
                     .controlSize(.regular)
 
                     Text("One purchase. Yours to keep. Live viewing, Read & Find, and sharing stay free.")

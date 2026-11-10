@@ -342,7 +342,7 @@ private struct PhoneInputView: View {
                             .font(.title3.weight(.semibold))
                         Text("Keep an eye on your work for free. With Pro, send input from your wrist or iPhone and keep your frequently used commands close.")
                             .foregroundStyle(.secondary)
-                        SettingsView.ProUpgradeRow()
+                        SettingsView.ProUpgradeRow(showsDescription: false)
                     }
                 }
             }

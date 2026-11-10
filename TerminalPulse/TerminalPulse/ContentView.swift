@@ -43,10 +43,10 @@ struct ContentView: View {
                         polling.startDemoAnimation()
                     },
                     onServerConnected: {
-                        if DemoData.isDemo {
-                            DemoData.deactivate()
-                            polling.stopDemoAnimation()
-                        }
+                        // Settings already clears the demo flag after a successful test.
+                        // Always stop its task before accepting live captures.
+                        DemoData.deactivate()
+                        polling.stopDemoAnimation()
                         polling.fetchNow()
                     }
                 )

@@ -987,26 +987,24 @@ final class PollingService {
     }
 
     private func runDemoLoop() async {
-        while !Task.isCancelled {
+        while !Task.isCancelled && DemoData.isDemo {
             let allLines = DemoData.payload.runs
-            renderedLines = []
-            sessionLabel = "dev:build"
-            lastUpdate = Date()
             lastDemoWatchSend = .distantPast
+            renderDemoFrame([])
 
             for lineIndex in 0..<allLines.count {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, DemoData.isDemo else { return }
 
                 let line = allLines[lineIndex]
 
                 if Self.isTypedCommand(line) {
                     // Pause before typing a command
                     try? await Task.sleep(for: .seconds(0.5))
-                    guard !Task.isCancelled else { return }
+                    guard !Task.isCancelled, DemoData.isDemo else { return }
                     await typeCommand(line, at: lineIndex, allLines: allLines)
                 } else {
                     try? await Task.sleep(for: .seconds(Self.delayFor(line)))
-                    guard !Task.isCancelled else { return }
+                    guard !Task.isCancelled, DemoData.isDemo else { return }
                     renderDemoFrame(Array(allLines.prefix(lineIndex + 1)))
                 }
             }
@@ -1018,10 +1016,10 @@ final class PollingService {
 
             // Hold the completed terminal for a few seconds
             try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, DemoData.isDemo else { return }
 
-            // Clear and restart
-            renderedLines = []
+            // Clear displayed text and its reading snapshot together.
+            renderDemoFrame([])
             try? await Task.sleep(for: .seconds(0.4))
         }
     }
@@ -1044,7 +1042,7 @@ final class PollingService {
 
         // Type each character
         for charIndex in 1...commandText.count {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, DemoData.isDemo else { return }
             let partial = String(commandText.prefix(charIndex))
             let partialRun = TerminalRun(t: partial, fg: commandRun.fg, bg: commandRun.bg, b: commandRun.b)
             renderDemoFrame(preceding + [promptRuns + [partialRun]])
@@ -1053,22 +1051,19 @@ final class PollingService {
     }
 
     private func renderDemoFrame(_ runs: [[TerminalRun]]) {
-        renderedLines = RunsRenderer.buildLines(from: runs, fontSize: renderedFontSize)
-        lastUpdate = Date()
-
-        // Stream to watch, throttled to ~2 updates/sec
+        guard !Task.isCancelled, DemoData.isDemo else { return }
         let now = Date()
+        let payload = WatchPayload(
+            host: "macbook", ts: ISO8601DateFormatter().string(from: now),
+            session: "dev", winIndex: 0, winName: "build", paneId: "%0",
+            hash: "demo-\(UUID().uuidString)", runs: runs
+        )
+        // Reading/copy and appearance changes must use the exact displayed frame.
+        // Throttle only Watch delivery, never the phone's source of truth.
+        applyPayload(payload)
+        lastUpdate = now
         if now.timeIntervalSince(lastDemoWatchSend) >= 0.5 {
             lastDemoWatchSend = now
-            let payload = WatchPayload(
-                host: "macbook",
-                ts: ISO8601DateFormatter().string(from: now),
-                session: "dev", winIndex: 0, winName: "build", paneId: "%0",
-                hash: "demo-\(UUID().uuidString)",
-                runs: runs
-            )
-            currentPayload = payload
-            currentPayloadInputContextID = nil
             watchBridge?.send(payload: payload)
         }
     }

@@ -11,7 +11,7 @@ TerminalPulse captures your tmux session output with full ANSI color support and
 - **Command-finished notifications** — Haptic buzz when a command completes
 - **Session switching** — Multiple tmux sessions, switch between them
 - **Color themes** — Default, Solarized Dark, Dracula, Gruvbox
-- **Background polling** — Keeps updating even when the app is backgrounded
+- **Background refresh** — Uses system-granted refresh opportunities and Watch requests; iOS does not guarantee continuous background updates
 - **Local & Tailscale** — Works on LAN or over Tailscale for remote access
 
 ## Requirements
@@ -103,7 +103,7 @@ launchctl kickstart -k gui/$(id -u)/com.tmuxonwatch.server
 
 - **Server URL**: HTTP endpoint (e.g., `http://127.0.0.1:8787`)
 - **Auth Token**: Stored in iOS Keychain
-- **Poll Interval**: 2–120 seconds (default: 10s)
+- **Poll Interval**: 1–120 seconds (default: 2s)
 - **Font Size**: 8–16pt (iPhone), 7–12pt (Watch)
 - **Color Theme**: Default, Solarized Dark, Dracula, Gruvbox
 - **Notifications**: Toggle command-finished alerts
