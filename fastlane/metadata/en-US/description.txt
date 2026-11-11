@@ -1,0 +1,21 @@
+tmuxonwatch brings your own tmux sessions to iPhone and Apple Watch. Follow builds, logs, and long-running commands without staying at your desk.
+
+Connect to the companion server on your Mac using its setup QR code or server address. The iPhone fetches your terminal output and passes it to your paired Watch. Use it with the tools you already run in tmux; no tmuxonwatch account is required.
+
+Free features:
+- Live terminal viewing on iPhone and Apple Watch
+- Read & Find on iPhone, with search, copying, and sharing
+- Pause to read on Watch, then return to the latest output
+- Themes, font sizing, and refresh controls
+- Screen-preview privacy and private local completion alerts, enabled by default
+- A demo you can explore before connecting a server
+
+One-time Pro unlock:
+- Send input from iPhone or Apple Watch
+- Dictate on Watch and send common control keys
+- Save frequently used commands on iPhone
+- Switch sessions and windows from Watch
+
+Input is tied to the terminal you were viewing. If the connection or target changes, refresh and reopen input before sending.
+
+Your host runs the terminal session. Screen-preview protection hides the app when inactive; it is not a biometric lock or screenshot prevention. Optional remote alerts require separate setup and use a cloud relay and Apple Push Notifications. Background refresh and Watch delivery depend on connectivity and the operating system, so continuous background updates are not guaranteed.

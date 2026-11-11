@@ -1,0 +1,1 @@
+Live tmux on your wrist. Watch builds, tail logs, and check long-running commands without picking up your phone.

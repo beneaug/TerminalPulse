@@ -12,6 +12,9 @@ struct TerminalPulseWatchApp: App {
                     bridge.setScenePhase(scenePhase)
                 }
         }
+        .backgroundTask(.watchConnectivity) {
+            await bridge.receiveBackgroundContent()
+        }
         .onChange(of: scenePhase) { _, phase in
             bridge.setScenePhase(phase)
         }

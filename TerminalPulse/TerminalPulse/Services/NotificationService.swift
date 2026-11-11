@@ -57,14 +57,14 @@ enum NotificationService {
         var errorDescription: String? {
             switch self {
             case .missingNotifyToken:
-                return "Notification token missing. Re-run install and scan QR again."
+                return String(localized: "Notification token missing. Re-run install and scan QR again.")
             case .badWebhookURL:
-                return "Webhook URL is invalid. Re-scan the install QR code."
+                return String(localized: "Webhook URL is invalid. Re-scan the install QR code.")
             case .badResponse(let code, let body):
                 if body.isEmpty {
-                    return "Webhook failed with status \(code)."
+                    return String(format: String(localized: "Webhook failed with status %lld."), code)
                 }
-                return "Webhook failed with status \(code): \(body)"
+                return String(format: String(localized: "Webhook failed with status %1$lld: %2$@"), code, body)
             }
         }
     }
@@ -72,7 +72,7 @@ enum NotificationService {
     static func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error {
-                logger.error("Notification permission error: \(error.localizedDescription, privacy: .public)")
+                logger.error("Notification permission error: \(error.localizedDescription, privacy: .private)")
             }
             guard granted else { return }
             DispatchQueue.main.async {
@@ -135,7 +135,7 @@ enum NotificationService {
     }
 
     static func handleAPNsRegistrationFailure(_ error: Error) {
-        logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
+        logger.error("APNs registration failed: \(error.localizedDescription, privacy: .private)")
     }
 
     static func notifyToken() -> String? {
@@ -175,7 +175,7 @@ enum NotificationService {
         ].joined(separator: "\n")
     }
 
-    static func sendTestWebhook() async throws {
+    static func sendTestWebhook() async throws -> PushTestReceipt {
         guard let token = notifyToken() else {
             throw RemotePushError.missingNotifyToken
         }
@@ -196,7 +196,7 @@ enum NotificationService {
         request.httpBody = try JSONEncoder().encode(
             Body(
                 title: "tmuxonwatch test",
-                message: "Remote push path is configured."
+                message: "Test notification from tmuxonwatch."
             )
         )
 
@@ -208,6 +208,7 @@ enum NotificationService {
             let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             throw RemotePushError.badResponse(http.statusCode, text)
         }
+        return PushTestReceipt.parse(data)
     }
 
     static func registerDeviceWithRelayIfPossible(force: Bool) async {
@@ -247,14 +248,14 @@ enum NotificationService {
             guard let http = response as? HTTPURLResponse else { return }
             guard (200...299).contains(http.statusCode) else {
                 let body = String(data: data, encoding: .utf8) ?? ""
-                logger.error("Push registration failed with status \(http.statusCode, privacy: .public): \(body, privacy: .public)")
+                logger.error("Push registration failed with status \(http.statusCode, privacy: .public): \(body, privacy: .private)")
                 return
             }
 
             defaults.set(deviceToken, forKey: registeredDeviceTokenKey)
             defaults.set(notifyToken, forKey: registeredNotifyTokenKey)
         } catch {
-            logger.error("Push registration request failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("Push registration request failed: \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -296,7 +297,7 @@ enum NotificationService {
                 }
             }
         } catch {
-            logger.error("Push unregister request failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("Push unregister request failed: \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -340,49 +341,26 @@ enum NotificationService {
 
     /// Detect if a line looks like a shell prompt.
     static func isPromptLine(_ line: String) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return false }
-
-        // Common prompt endings: "$ ", "# ", "% ", "> ", "❯ "
-        let promptEndings = ["$ ", "# ", "% ", "> ", "❯ ", "❯"]
-        for ending in promptEndings {
-            if trimmed.hasSuffix(ending) { return true }
-        }
-
-        // Line is just a prompt char (e.g. "$ " or ">" alone)
-        let promptChars: [Character] = ["$", ">", "#", "%", "❯"]
-        if let first = trimmed.first, promptChars.contains(first), trimmed.count <= 2 {
-            return true
-        }
-
-        // user@host:path$ pattern
-        if trimmed.contains("@") && (trimmed.hasSuffix("$") || trimmed.hasSuffix("#")) {
-            return true
-        }
-
-        return false
+        PromptDetector.isPrompt(line)
     }
 
     static func notifyCommandFinished(session: String, windowIndex: Int, window: String, outputLines: [String]) {
-        // Build body from last few non-empty output lines
-        let meaningful = outputLines
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty && !isPromptLine($0) }
-            .suffix(3)
-
-        let body = meaningful.isEmpty ? "Ready for input." : meaningful.joined(separator: "\n")
-        let windowLabel = window.trimmingCharacters(in: .whitespacesAndNewlines)
-        let threadID = "terminalpulse.\(session).\(windowIndex)"
-        let notificationID = "terminalpulse.\(session).\(windowIndex)"
-
+        guard UserDefaults.standard.bool(forKey: "notificationsEnabled") else { return }
+        let hideDetails = PrivacyPreferences.hideNotificationDetails(in: .standard)
+        let notice = LocalCompletionNotice(session: session, windowIndex: windowIndex,
+                                           window: window, outputLines: outputLines,
+                                           hideDetails: hideDetails)
+        // No session names in the private alert's identifiers either.
+        let notificationID = hideDetails ? "terminalpulse.private.completion" : "terminalpulse.\(session).\(windowIndex)"
+        let threadID = hideDetails ? "terminalpulse.private" : notificationID
         let content = UNMutableNotificationContent()
-        content.title = "\(session):\(windowIndex) \(windowLabel) finished"
-        content.body = body
+        content.title = notice.title
+        content.body = notice.body
         content.sound = .default
         content.threadIdentifier = threadID
         content.interruptionLevel = .active
 
-        // Use stable identifier per session:windowIndex so new notifications replace old ones
+        // Private alerts share a neutral identifier; detailed alerts replace per window.
         let request = UNNotificationRequest(
             identifier: notificationID,
             content: content,

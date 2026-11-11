@@ -10,6 +10,9 @@ enum RunsRenderer {
         let defaultFG = theme.foreground
         let defaultBG = theme.background
         let baseFont = Font.system(size: fontSize, weight: .regular, design: .monospaced)
+        let boldFont = Font.system(size: fontSize, weight: .bold, design: .monospaced)
+        let italicFont = baseFont.italic()
+        let boldItalicFont = boldFont.italic()
 
         return lines.map { runs in
             var line = AttributedString()
@@ -23,11 +26,8 @@ enum RunsRenderer {
             }
 
             var remainingChars = maxCharsPerLine
-            var didTruncateLine = false
-
             for run in runs.prefix(maxRunsPerLine) {
                 guard remainingChars > 0 else {
-                    didTruncateLine = true
                     break
                 }
 
@@ -36,23 +36,19 @@ enum RunsRenderer {
                 }
 
                 let text: String
-                if run.t.count <= remainingChars {
+                let runLength = run.t.count
+                if runLength <= remainingChars {
                     text = run.t
-                    remainingChars -= run.t.count
+                    remainingChars -= runLength
                 } else {
                     text = String(run.t.prefix(remainingChars))
                     remainingChars = 0
-                    didTruncateLine = true
                 }
 
                 var attrs = AttributeContainer()
 
-                let weight: Font.Weight = (run.b == true) ? .bold : .regular
-                attrs.font = .system(size: fontSize, weight: weight, design: .monospaced)
-
-                if run.i == true {
-                    attrs.font = .system(size: fontSize, weight: weight, design: .monospaced).italic()
-                }
+                attrs.font = run.i == true ? (run.b == true ? boldItalicFont : italicFont)
+                    : (run.b == true ? boldFont : baseFont)
 
                 let fgColor: Color
                 if run.fg == "_defBg" {
@@ -77,17 +73,6 @@ enum RunsRenderer {
                 }
 
                 line.append(AttributedString(Self.forceTextPresentation(text), attributes: attrs))
-            }
-
-            if runs.count > maxRunsPerLine {
-                didTruncateLine = true
-            }
-
-            if didTruncateLine {
-                var truncAttrs = AttributeContainer()
-                truncAttrs.font = baseFont
-                truncAttrs.foregroundColor = defaultFG.opacity(0.65)
-                line.append(AttributedString(" [truncated]", attributes: truncAttrs))
             }
 
             return line
@@ -120,6 +105,7 @@ enum RunsRenderer {
 
     /// Insert U+FE0E after any character that Apple might render as emoji.
     private static func forceTextPresentation(_ text: String) -> String {
+        guard text.unicodeScalars.contains(where: { emojiProne.contains($0) }) else { return text }
         var result = ""
         result.reserveCapacity(text.count)
         for char in text {

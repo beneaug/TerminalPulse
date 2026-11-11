@@ -1,0 +1,5 @@
+- Read, search, copy, and share terminal output on iPhone; pause to read on Watch.
+- Default-on screen-preview privacy and private local completion alerts.
+- Pro input on iPhone and Watch, saved commands on iPhone, and safer handling when a terminal connection changes.
+- Clearer setup, larger-text support, and feedback for purchases awaiting approval.
+- Connection and demo-to-live reliability improvements.

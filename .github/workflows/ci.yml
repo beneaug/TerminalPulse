@@ -19,6 +19,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install server dependencies
+        run: python -m pip install -r server/requirements.txt
+
       - name: Compile Python
         run: python -m compileall server
 
@@ -28,24 +31,96 @@ jobs:
   apple:
     name: Apple Builds
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build iOS App
+      - name: Test networking, refresh policy, and models
+        run: swift test
+
+      - name: Build iOS App (Debug)
         run: |
           xcodebuild \
             -project TerminalPulse/TerminalPulse.xcodeproj \
             -scheme TerminalPulse \
+            -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             build
 
-      - name: Build watchOS App
+      - name: Build watchOS App (Debug)
         run: |
           xcodebuild \
             -project TerminalPulse/TerminalPulse.xcodeproj \
             -scheme TerminalPulseWatch \
+            -configuration Debug \
             -destination 'generic/platform=watchOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+      - name: Build iOS App (Release)
+        run: |
+          xcodebuild \
+            -project TerminalPulse/TerminalPulse.xcodeproj \
+            -scheme TerminalPulse \
+            -configuration Release \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Build watchOS App (Release)
+        run: |
+          xcodebuild \
+            -project TerminalPulse/TerminalPulse.xcodeproj \
+            -scheme TerminalPulseWatch \
+            -configuration Release \
+            -destination 'generic/platform=watchOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+  app-tests:
+    name: App Tests (iOS 26.2)
+    # iOS 26.4.1's command-line StoreKit service rejects SKTestSession
+    # configuration (SKInternalErrorDomain 3). Keep all purchase assertions
+    # on the locally verified runtime; newer SDK builds remain above.
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test app lifecycle, reading consistency, and local purchases
+        timeout-minutes: 12
+        run: |
+          mkdir -p TestResults
+          test -d "$DEVELOPER_DIR"
+          xcodebuild -version | tee TestResults/xcode-version.txt
+          xcrun simctl list devices available -j > TestResults/simulators.json
+          simulator_id=$(python3 -c 'import json; d=json.load(open("TestResults/simulators.json")); matches=[x["udid"] for x in d["devices"].get("com.apple.CoreSimulator.SimRuntime.iOS-26-2", []) if x["name"].startswith("iPhone")]; assert matches, "Required iOS 26.2 simulator is unavailable; do not substitute a different runtime"; print(matches[0])')
+          xcrun simctl bootstatus "$simulator_id" -b
+          xcodebuild \
+            -project TerminalPulse/TerminalPulse.xcodeproj \
+            -scheme TerminalPulse \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            -only-testing:TmuxAppTests \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 120 \
+            -resultBundlePath TestResults/AppTests.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
+            test
+
+      - name: Preserve app-test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-test-results
+          path: TestResults/
+          if-no-files-found: warn
+          retention-days: 7

@@ -14,7 +14,7 @@ _SEP = "\x1f"  # Unit Separator: unlikely to appear in tmux names/commands
 def _validate_target(target: str | None) -> str | None:
     if target is None:
         return None
-    if not _TARGET_RE.match(target):
+    if not _TARGET_RE.fullmatch(target):
         raise ValueError(f"Invalid tmux target: {target!r}")
     return target
 
@@ -25,7 +25,19 @@ async def _run(*args: str) -> str:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_TIMEOUT)
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_TIMEOUT)
+    except (asyncio.TimeoutError, asyncio.CancelledError) as exc:
+        # Cancelling communicate does not terminate its child process.
+        if proc.returncode is None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+        await proc.communicate()
+        if isinstance(exc, asyncio.CancelledError):
+            raise
+        raise RuntimeError("tmux did not respond within 5 seconds") from exc
     if proc.returncode != 0:
         msg = stderr.decode().strip() if stderr else f"tmux exited {proc.returncode}"
         raise RuntimeError(msg)
@@ -94,13 +106,13 @@ class SessionInfo:
 
 async def list_sessions() -> list[SessionInfo]:
     """List all tmux sessions."""
-    fmt = "#{session_name}|#{session_windows}|#{session_attached}"
+    fmt = _SEP.join(["#{session_name}", "#{session_windows}", "#{session_attached}"])
     out = await _run("tmux", "list-sessions", "-F", fmt)
     sessions: list[SessionInfo] = []
     for line in out.strip().split("\n"):
         if not line:
             continue
-        parts = line.split("|", 2)
+        parts = line.split(_SEP, 2)
         if len(parts) < 3:
             continue
         try:
@@ -110,7 +122,7 @@ async def list_sessions() -> list[SessionInfo]:
         sessions.append(SessionInfo(
             name=parts[0],
             windows=win_count,
-            attached=parts[2] == "1",
+            attached=parts[2].isdigit() and int(parts[2]) > 0,
         ))
     return sessions
 
@@ -126,7 +138,7 @@ class WindowInfo:
 async def list_windows(session: str | None = None) -> list[WindowInfo]:
     """List tmux windows, optionally scoped to one session."""
     _validate_target(session)
-    fmt = "#{session_name}|#{window_index}|#{window_name}|#{window_active}"
+    fmt = _SEP.join(["#{session_name}", "#{window_index}", "#{window_name}", "#{window_active}"])
     cmd = ["tmux", "list-windows", "-F", fmt]
     if session:
         cmd.extend(["-t", session])
@@ -135,7 +147,7 @@ async def list_windows(session: str | None = None) -> list[WindowInfo]:
     for line in out.strip().split("\n"):
         if not line:
             continue
-        parts = line.split("|", 3)
+        parts = line.split(_SEP, 3)
         if len(parts) < 4:
             continue
         try:
@@ -215,7 +227,7 @@ async def send_keys(
         cmd = ["tmux", "send-keys", "-l"]
         if target:
             cmd.extend(["-t", target])
-        cmd.append(text)
+        cmd.extend(["--", text])
     else:
         assert special is not None
         if special not in _ALLOWED_SPECIAL_KEYS:

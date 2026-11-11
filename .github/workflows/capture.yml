@@ -1,0 +1,100 @@
+name: Demo Simulator Capture
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: 'Full 40-character candidate commit SHA to capture (manual diagnostics only)'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Validate explicit candidate SHA
+        env:
+          CANDIDATE_REF: ${{ inputs.candidate_ref }}
+        run: |
+          python3 - <<'PYVALIDATE'
+          import os, re
+          if not re.fullmatch(r'[0-9a-fA-F]{40}', os.environ.get('CANDIDATE_REF', '')):
+              raise SystemExit('candidate_ref must be a full 40-character commit SHA.')
+          PYVALIDATE
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_ref }}
+          fetch-depth: 1
+          path: candidate
+      - uses: actions/checkout@v4
+        with:
+          ref: 2af6746a68c7c89dbd87af229aaa631f53321803
+          fetch-depth: 1
+          path: baseline
+          sparse-checkout: TerminalPulse
+      - name: Capture phone demo using existing runtime
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, signal, subprocess, time
+          out=pathlib.Path('capture'); out.mkdir()
+          if pathlib.Path('/Applications/Xcode_26.5.app/Contents/Developer').is_dir():
+            os.environ['DEVELOPER_DIR']='/Applications/Xcode_26.5.app/Contents/Developer'
+          def run(args, timeout=60, check=True, log=None):
+            print('RUN', ' '.join(map(str,args)), flush=True)
+            if log:
+              with open(log,'w') as f: return subprocess.run(args, timeout=timeout, check=check, stdout=f, stderr=subprocess.STDOUT)
+            return subprocess.run(args, timeout=timeout, check=check, capture_output=True, text=True)
+          def sim(*args, timeout=60, check=True): return run(['xcrun','simctl',*args],timeout=timeout,check=check)
+          (out/'xcode.txt').write_text(run(['xcodebuild','-version']).stdout)
+          (out/'disk.txt').write_text(run(['df','-h']).stdout)
+          runtimes=sim('list','runtimes','-j').stdout; (out/'runtimes.json').write_text(runtimes)
+          devices=sim('list','devices','available','-j').stdout; (out/'devices.json').write_text(devices)
+          phones=[(r,d) for r,ds in json.loads(devices)['devices'].items() if '.iOS-' in r for d in ds if d['name'].startswith('iPhone') and d.get('isAvailable')]
+          phones.sort(key=lambda x:(tuple(map(int,x[0].split('-')[1:])), 'Pro Max' in x[1]['name'],x[1]['name']),reverse=True)
+          if not phones: raise SystemExit('No preinstalled iOS simulator runtime. No installation attempted.')
+          runtime,device=phones[0]; phone=device['udid']
+          provenance={'phone':device['name'],'runtime':runtime,'baseline':'2af6746a68c7c89dbd87af229aaa631f53321803','baseline_label':'September source baseline, not released binary','candidate':run(['git','-C','candidate','rev-parse','HEAD']).stdout.strip(),'static':'Existing DEBUG demoSnapshot fixture, no Pro override','video':'Built-in ordinary demo animation, not live host','limitations':'Phone terminal only. No Settings or Watch interaction validation. No status-bar override. No purchases or real input.'}
+          (out/'provenance.json').write_text(json.dumps(provenance,indent=2))
+          sim('boot',phone,check=False)
+          sim('bootstatus',phone,'-b',timeout=420)
+          bundle='com.augustbenedikt.TerminalPulse'
+          baseargs=['-onboardingComplete','YES','-isDemoMode','YES','-remotePushEnabled','NO','-notificationsEnabled','NO','-AppleLanguages','(en)','-AppleLocale','en_US']
+          results={}
+          # Candidate first; preserve it even if historical baseline fails.
+          for ref in ['candidate','baseline']:
+            dest=out/ref; dest.mkdir()
+            try:
+              run(['xcodebuild','-project',f'{ref}/TerminalPulse/TerminalPulse.xcodeproj','-scheme','TerminalPulse','-configuration','Debug','-destination','generic/platform=iOS Simulator','-derivedDataPath',f'build-{ref}','CODE_SIGNING_ALLOWED=NO','build'],timeout=300,log=dest/'build.log')
+              sim('terminate',phone,bundle,check=False,timeout=30)
+              sim('uninstall',phone,bundle,check=False,timeout=60)
+              sim('install',phone,f'build-{ref}/Build/Products/Debug-iphonesimulator/TerminalPulse.app',timeout=90)
+              sim('launch',phone,bundle,*baseargs,'-demoSnapshot','YES',timeout=60)
+              time.sleep(8)
+              sim('io',phone,'screenshot',str(dest/'phone-terminal.png'),timeout=60)
+              sim('terminate',phone,bundle,check=False,timeout=30)
+              sim('launch',phone,bundle,*baseargs,'-demoSnapshot','NO',timeout=60)
+              time.sleep(2)
+              with open(dest/'record.log','w') as log:
+                proc=subprocess.Popen(['xcrun','simctl','io',phone,'recordVideo','--codec=h264',str(dest/'phone-demo.mp4')],stdout=log,stderr=subprocess.STDOUT)
+                try:
+                  time.sleep(25)
+                  proc.send_signal(signal.SIGINT)
+                  proc.wait(timeout=30)
+                except BaseException:
+                  proc.kill(); proc.wait(timeout=10); raise
+              results[ref]='Media captured; requires visual review'
+            except (subprocess.SubprocessError,OSError) as error:
+              results[ref]=str(error)
+              (dest/'failure.txt').write_text(str(error))
+            finally:
+              (out/'results.json').write_text(json.dumps(results,indent=2))
+          print(json.dumps(results,indent=2))
+          if not (out/'candidate'/'phone-terminal.png').is_file(): raise SystemExit('Candidate capture failed; diagnostics preserved.')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: genuine-phone-demo-captures
+          path: capture
+          retention-days: 14

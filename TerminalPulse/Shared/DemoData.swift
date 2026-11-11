@@ -31,11 +31,11 @@ enum DemoData {
             // ── Build output ──
             [bold("$", "green"), plain(" "), fg("swift build", "white")],
             [fg("Building for debugging...", "cyan")],
-            [fg("Compiling ", "white"), bold("TerminalPulse", "yellow"), fg(" (14 sources)", "white")],
+            [fg("Compiling ", "white"), bold("Atlas", "yellow"), fg(" (14 sources)", "white")],
             [fg("Compiling ", "white"), bold("WatchBridge.swift", "yellow")],
             [fg("Compiling ", "white"), bold("PollingService.swift", "yellow")],
             [fg("Compiling ", "white"), bold("RunsRenderer.swift", "yellow")],
-            [fg("Linking ", "white"), bold("TerminalPulse", "magenta")],
+            [fg("Linking ", "white"), bold("Atlas", "magenta")],
             [bold("Build complete!", "green"), fg(" (6.42s)", "brBlack")],
             [],
             // ── Git status ──
@@ -49,7 +49,7 @@ enum DemoData {
             [fg("  ", "white"), fg("Sources/App/DemoData.swift", "red")],
             [],
             // ── Prompt ──
-            [bold("august", "green"), fg("@", "white"), bold("macbook", "blue"), fg(":", "white"), bold("~/TerminalPulse", "cyan"), fg(" (main) ", "magenta"), bold("$ ", "green"), fg("_", "white")],
+            [bold("dev", "green"), fg("@", "white"), bold("macbook", "blue"), fg(":", "white"), bold("~/atlas", "cyan"), fg(" (main) ", "magenta"), bold("$ ", "green"), fg("_", "white")],
         ]
 
         return WatchPayload(

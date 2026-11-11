@@ -5,6 +5,10 @@ struct OnboardingView: View {
     @Binding var isComplete: Bool
     private let installCommand = "brew install beneaug/tmuxonwatch/tmuxonwatch && tmuxonwatch-install"
     @State private var currentStep = 0
+    @State private var copiedInstallCommand = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage(LanguageManager.preferredLanguageKey) private var preferredLanguage = ""
+    @State private var showLanguageRestartAlert = false
 
     var body: some View {
         ZStack {
@@ -12,40 +16,80 @@ struct OnboardingView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Progress dots
-                HStack(spacing: 8) {
-                    ForEach(0..<3) { index in
-                        Circle()
-                            .fill(index <= currentStep ? Color.green : Color.white.opacity(0.2))
-                            .frame(width: 8, height: 8)
+                VStack(spacing: 10) {
+                    HStack {
+                        Text(String(format: "%02d / 03", currentStep + 1))
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .tracking(1)
+                            .foregroundStyle(TerminalColors.productAccent)
+                            .accessibilityLabel(Text("Step \(currentStep + 1) of 3"))
+
+                        Spacer()
+
+                        Text("TMUX ON WATCH")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .tracking(1.2)
+                            .foregroundStyle(.white.opacity(0.42))
+
+                        if currentStep == 0 {
+                            Menu {
+                                Picker("Language", selection: $preferredLanguage) {
+                                    Text("System").tag("")
+                                    Text("English").tag("en")
+                                    Text("日本語").tag("ja")
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.55))
+                                    .frame(width: 40, height: 40)
+                                    .contentShape(Rectangle())
+                            }
+                            .accessibilityLabel(Text("More options"))
+                            .onChange(of: preferredLanguage) { _, newValue in
+                                LanguageManager.apply(newValue)
+                                showLanguageRestartAlert = true
+                            }
+                        }
                     }
+
+                    HStack(spacing: 5) {
+                        ForEach(0..<3) { index in
+                            Rectangle()
+                                .fill(index <= currentStep ? TerminalColors.productAccent : Color.white.opacity(0.12))
+                                .frame(height: 2)
+                        }
+                    }
+                    .accessibilityHidden(true)
                 }
-                .padding(.top, 20)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Step \(currentStep + 1) of 3")
-
-                Spacer()
-
-                switch currentStep {
-                case 0:
-                    installStep
-                case 1:
-                    connectStep
-                case 2:
-                    doneStep
-                default:
-                    EmptyView()
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                GeometryReader { geometry in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            Spacer(minLength: 24)
+                            switch currentStep {
+                            case 0: installStep
+                            case 1: connectStep
+                            case 2: doneStep
+                            default: EmptyView()
+                            }
+                            Spacer(minLength: 24)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                    .id(currentStep)
                 }
-
-                Spacer()
 
                 // Navigation
                 HStack {
                     if currentStep > 0 {
                         Button("Back") {
-                            withAnimation { currentStep -= 1 }
+                            cancelConnectionTest()
+                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { currentStep -= 1 }
                         }
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(.white.opacity(0.65))
                     }
 
                     Spacer()
@@ -54,13 +98,19 @@ struct OnboardingView: View {
                         Button("Skip") {
                             completeOnboarding()
                         }
-                        .foregroundStyle(.white.opacity(0.3))
-                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.65))
+                        .font(.subheadline)
                     }
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
             }
+        }
+        .onDisappear { cancelConnectionTest() }
+        .alert("Language Changed", isPresented: $showLanguageRestartAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Language changed. Restart the app to apply.")
         }
     }
 
@@ -70,31 +120,34 @@ struct OnboardingView: View {
         VStack(spacing: 24) {
             Image(systemName: "terminal")
                 .font(.system(size: 48))
-                .foregroundStyle(.green)
+                .foregroundStyle(TerminalColors.productAccent)
 
             Text("Install the Server")
-                .font(.system(size: 24, weight: .bold))
+                .font(.largeTitle.weight(.black))
+                .tracking(-1.2)
                 .foregroundStyle(.white)
 
             Text("Run this on the Mac where tmux is running:")
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.6))
 
             HStack {
                 Text(installCommand)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.green)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(TerminalColors.productAccent)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Button {
                     UIPasteboard.general.string = installCommand
+                    copiedInstallCommand = true
                 } label: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.white.opacity(0.5))
+                    Image(systemName: copiedInstallCommand ? "checkmark" : "doc.on.doc")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.65))
                 }
+                .frame(minWidth: 44, minHeight: 44)
                 .accessibilityLabel("Copy install command")
+                .accessibilityValue(copiedInstallCommand ? Text("Copied") : Text(""))
             }
             .padding(16)
             .background(Color.white.opacity(0.05))
@@ -106,21 +159,22 @@ struct OnboardingView: View {
             .padding(.horizontal, 24)
 
             Text("The installer sets up Python, generates a secure token, and starts the server.")
-                .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.4))
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.65))
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 32)
 
             Button {
-                withAnimation { currentStep = 1 }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { currentStep = 1 }
             } label: {
                 Text("Next: Connect")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.headline)
                     .foregroundStyle(.black)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .background(TerminalColors.productAccent)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             .padding(.horizontal, 24)
 
@@ -128,15 +182,15 @@ struct OnboardingView: View {
                 activateDemo()
             } label: {
                 Text("Try Demo")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.green)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(TerminalColors.productAccent)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(Color.green.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .background(TerminalColors.productAccent.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(TerminalColors.productAccent.opacity(0.45), lineWidth: 1)
                     )
             }
             .padding(.horizontal, 24)
@@ -150,6 +204,10 @@ struct OnboardingView: View {
     @State private var isScanning = false
     @State private var showCameraDeniedAlert = false
     @State private var connectionStatus: ConnectionStatus = .idle
+    @State private var connectionTask: Task<Void, Never>?
+    @State private var connectionAttempt = UUID()
+    @State private var readiness: TerminalReadiness?
+    @State private var pendingRemoteConfig: NotificationService.RemoteConfig?
 
     private enum ConnectionStatus {
         case idle, testing, success, failure(String)
@@ -172,16 +230,17 @@ struct OnboardingView: View {
         VStack(spacing: 24) {
             Image(systemName: "qrcode.viewfinder")
                 .font(.system(size: 48))
-                .foregroundStyle(.green)
+                .foregroundStyle(TerminalColors.productAccent)
 
             Text("Connect to Server")
-                .font(.system(size: 24, weight: .bold))
+                .font(.title2.bold())
                 .foregroundStyle(.white)
 
             Text("Scan the QR code from the install script, or enter details manually.")
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.6))
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 32)
 
             Button {
@@ -191,12 +250,12 @@ struct OnboardingView: View {
                     Image(systemName: "qrcode")
                     Text("Scan QR Code")
                 }
-                .font(.system(size: 16, weight: .semibold))
+                .font(.headline)
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .background(TerminalColors.productAccent)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             .padding(.horizontal, 24)
             .sheet(isPresented: $isScanning) {
@@ -220,10 +279,10 @@ struct OnboardingView: View {
             VStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("SERVER URL")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.4))
-                    TextField("http://127.0.0.1:8787", text: $serverURL)
-                        .font(.system(size: 14, design: .monospaced))
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.65))
+                    TextField("http://your-mac.local:8787", text: Binding(get: { serverURL }, set: { cancelConnectionTest(); pendingRemoteConfig = nil; serverURL = $0 }))
+                        .font(.subheadline.monospaced())
                         .foregroundStyle(.white)
                         .textContentType(.URL)
                         .autocorrectionDisabled()
@@ -238,12 +297,17 @@ struct OnboardingView: View {
                         .accessibilityLabel("Server URL")
                 }
 
+                Text("Use your Mac’s LAN address or Tailscale hostname. 127.0.0.1 points to this iPhone.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.65))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text("AUTH TOKEN")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.4))
-                    SecureField("Paste token here", text: $authToken)
-                        .font(.system(size: 14, design: .monospaced))
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.65))
+                    SecureField("Paste token here", text: Binding(get: { authToken }, set: { cancelConnectionTest(); pendingRemoteConfig = nil; authToken = $0 }))
+                        .font(.subheadline.monospaced())
                         .foregroundStyle(.white)
                         .padding(10)
                         .background(Color.white.opacity(0.05))
@@ -269,7 +333,7 @@ struct OnboardingView: View {
                         Text("Testing...")
                     case .success:
                         Image(systemName: "checkmark.circle.fill")
-                        Text("Connected!")
+                        Text("Server saved")
                     case .failure:
                         Image(systemName: "exclamationmark.triangle.fill")
                         Text("Retry")
@@ -277,22 +341,22 @@ struct OnboardingView: View {
                         Text("Test Connection")
                     }
                 }
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(connectionStatus.isSuccess ? .white : .black)
+                .font(.headline)
+                .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(connectionStatus.isSuccess ? .green : .white)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .background(TerminalColors.productAccent)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             .disabled(serverURL.isEmpty || authToken.isEmpty || connectionStatus.isTesting)
             .padding(.horizontal, 24)
 
             if let msg = connectionStatus.failureMessage {
                 Text(msg)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.caption.monospaced())
                     .foregroundStyle(.red)
                     .padding(.horizontal, 24)
-                    .accessibilityLabel("Connection error: \(msg)")
+                    .accessibilityLabel(Text("Connection error: \(msg)"))
             }
         }
     }
@@ -303,22 +367,23 @@ struct OnboardingView: View {
         VStack(spacing: 24) {
             Image(systemName: "checkmark.circle")
                 .font(.system(size: 48))
-                .foregroundStyle(.green)
+                .foregroundStyle(TerminalColors.productAccent)
 
-            Text("You're Connected!")
-                .font(.system(size: 24, weight: .bold))
+            Text("Server saved")
+                .font(.title2.bold())
                 .foregroundStyle(.white)
 
-            Text("tmuxonwatch will poll your tmux session and push live output to your Apple Watch.")
-                .font(.system(size: 14))
+            Text(readiness?.message ?? "")
+                .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.6))
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 32)
 
             VStack(alignment: .leading, spacing: 12) {
-                featureRow(icon: "applewatch", text: "Live terminal on your wrist")
-                featureRow(icon: "bell.badge", text: "Notifications when commands finish")
-                featureRow(icon: "arrow.clockwise", text: "Auto-refreshes in background")
+                Text("Open the Watch app to check its connection. Remote notifications require separate setup in Settings.")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.8))
             }
             .padding(20)
             .background(Color.white.opacity(0.03))
@@ -328,27 +393,15 @@ struct OnboardingView: View {
             Button {
                 completeOnboarding()
             } label: {
-                Text("Start Watching")
-                    .font(.system(size: 16, weight: .semibold))
+                Text("Continue")
+                    .font(.headline)
                     .foregroundStyle(.black)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(.green)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .background(TerminalColors.productAccent)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             .padding(.horizontal, 24)
-        }
-    }
-
-    private func featureRow(icon: String, text: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 16))
-                .foregroundStyle(.green)
-                .frame(width: 24)
-            Text(text)
-                .font(.system(size: 14))
-                .foregroundStyle(.white.opacity(0.8))
         }
     }
 
@@ -377,87 +430,82 @@ struct OnboardingView: View {
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let url = dict["url"] as? String,
               let token = dict["token"] as? String else {
-            connectionStatus = .failure("QR code not recognized. Scan the code from the install script.")
+            connectionStatus = .failure(String(localized: "QR code not recognized. Scan the code from the install script."))
             return
         }
+        cancelConnectionTest()
         serverURL = url
         authToken = token
-        NotificationService.applyRemoteConfig(NotificationService.remoteConfig(from: dict))
+        pendingRemoteConfig = NotificationService.remoteConfig(from: dict)
         testAndConnect()
+    }
+
+    private func cancelConnectionTest() {
+        connectionTask?.cancel()
+        connectionAttempt = UUID()
+        connectionStatus = .idle
+        readiness = nil
     }
 
     private func testAndConnect() {
         guard !serverURL.isEmpty, !authToken.isEmpty else { return }
+        connectionTask?.cancel()
+        let attempt = UUID()
+        connectionAttempt = attempt
         connectionStatus = .testing
+        let testedURL = serverURL
+        let testedToken = authToken
+        let qrConfig = pendingRemoteConfig
 
-        // Save credentials so APIClient can read them for the test
-        UserDefaults.standard.set(serverURL, forKey: "serverURL")
-        _ = KeychainService.save(key: "authToken", value: authToken)
-
-        Task {
+        connectionTask = Task { @MainActor in
             do {
-                let api = APIClient()
-                _ = try await api.fetchHealth()
-                do {
-                    _ = try await api.fetchSessions()
-                } catch let apiError as APIError {
-                    if apiError.statusCode == 401 {
-                        throw apiError
-                    }
-                    // Non-auth API failures (for example no tmux sessions yet) still
-                    // prove token acceptance by the server.
+                let api = APIClient(serverURL: testedURL, authToken: testedToken)
+                let result = try await api.checkReadiness()
+                let config = try? await api.fetchNotifyConfig()
+                try Task.checkCancellation()
+                guard connectionAttempt == attempt, currentStep == 1,
+                      serverURL == testedURL, authToken == testedToken else { return }
+                guard KeychainService.save(key: "authToken", value: testedToken) else {
+                    throw APIError.badStatus(0, String(localized: "Could not save the token securely. Please try again."))
                 }
-                await refreshRemoteConfigFromServer(api: api)
+                UserDefaults.standard.set(testedURL, forKey: "serverURL")
+                if let qrConfig { NotificationService.applyRemoteConfig(qrConfig) }
+                pendingRemoteConfig = nil
+                if let config {
+                    NotificationService.applyRemoteConfig(.init(
+                        notifyToken: config.notifyToken, notifyWebhookURL: config.notifyWebhookURL,
+                        notifyRegisterURL: config.notifyRegisterURL, notifyUnregisterURL: config.notifyUnregisterURL))
+                }
                 if DemoData.isDemo {
                     DemoData.deactivate()
                     CaptureCache.clear()
                 }
+                readiness = result
                 connectionStatus = .success
-                try? await Task.sleep(for: .milliseconds(800))
-                withAnimation { currentStep = 2 }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { currentStep = 2 }
             } catch {
-                // Clear invalid credentials so they don't persist
-                UserDefaults.standard.removeObject(forKey: "serverURL")
-                KeychainService.delete(key: "authToken")
+                guard !Task.isCancelled, connectionAttempt == attempt else { return }
                 connectionStatus = .failure(error.localizedDescription)
             }
         }
     }
 
     private func completeOnboarding() {
-        // Save whatever is entered even if not tested
-        if !serverURL.isEmpty {
-            UserDefaults.standard.set(serverURL, forKey: "serverURL")
-        }
-        if !authToken.isEmpty {
-            _ = KeychainService.save(key: "authToken", value: authToken)
-        }
+        // Skip never overwrites a working saved configuration with untested edits.
+        connectionTask?.cancel()
+        connectionAttempt = UUID()
         UserDefaults.standard.set(true, forKey: "onboardingComplete")
-        withAnimation { isComplete = true }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { isComplete = true }
     }
 
     private func activateDemo() {
         DemoData.activate()
         UserDefaults.standard.set("http://127.0.0.1:8787", forKey: "serverURL")
         UserDefaults.standard.set(true, forKey: "onboardingComplete")
-        withAnimation { isComplete = true }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { isComplete = true }
     }
 
-    private func refreshRemoteConfigFromServer(api: APIClient) async {
-        do {
-            let config = try await api.fetchNotifyConfig()
-            NotificationService.applyRemoteConfig(
-                .init(
-                    notifyToken: config.notifyToken,
-                    notifyWebhookURL: config.notifyWebhookURL,
-                    notifyRegisterURL: config.notifyRegisterURL,
-                    notifyUnregisterURL: config.notifyUnregisterURL
-                )
-            )
-        } catch {
-            // Older server versions may not expose notify config.
-        }
-    }
+
 }
 
 // MARK: - QR Scanner
@@ -477,6 +525,9 @@ struct QRScannerView: UIViewControllerRepresentable {
 class QRScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     var onResult: ((String) -> Void)?
     private var captureSession: AVCaptureSession?
+    private let captureQueue = DispatchQueue(label: "com.tmuxonwatch.qr-camera", qos: .userInitiated)
+    private var previewLayer: AVCaptureVideoPreviewLayer?
+    private var handledResult = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -499,22 +550,30 @@ class QRScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsD
         preview.frame = view.bounds
         preview.videoGravity = .resizeAspectFill
         view.layer.addSublayer(preview)
+        previewLayer = preview
 
         captureSession = session
-        Task.detached { session.startRunning() }
+        captureQueue.async { session.startRunning() }
     }
 
     func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
-        guard let obj = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
+        guard !handledResult, let obj = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
               let value = obj.stringValue else { return }
-        captureSession?.stopRunning()
-        dismiss(animated: true) { [weak self] in
-            self?.onResult?(value)
+        handledResult = true
+        if let session = captureSession { captureQueue.async { session.stopRunning() } }
+        let callback = onResult
+        dismiss(animated: true) {
+            callback?(value)
         }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        captureSession?.stopRunning()
+        if let session = captureSession { captureQueue.async { session.stopRunning() } }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer?.frame = view.bounds
     }
 }

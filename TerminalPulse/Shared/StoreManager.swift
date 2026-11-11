@@ -24,7 +24,10 @@ final class StoreManager {
     enum PurchaseState: Equatable {
         case idle
         case purchasing
+        case pending
         case purchased
+        case restoring
+        case restored
         case failed(String)
     }
 
@@ -35,8 +38,8 @@ final class StoreManager {
             await self?.listenForTransactions()
         }
         Task { [weak self] in
-            await self?.loadProductsWithRetry()
             await self?.checkEntitlement()
+            await self?.loadProductsWithRetry()
         }
     }
 
@@ -63,8 +66,10 @@ final class StoreManager {
     func checkEntitlement() async {
         for await result in Transaction.currentEntitlements {
             if case .verified(let transaction) = result,
-               transaction.productID == Self.proProductID {
+               transaction.productID == Self.proProductID,
+               transaction.revocationDate == nil, !transaction.isUpgraded {
                 isProUnlocked = true
+                if purchaseState == .pending { purchaseState = .purchased }
                 return
             }
         }
@@ -72,6 +77,8 @@ final class StoreManager {
     }
 
     func purchase() async {
+        guard purchaseState != .purchasing && purchaseState != .restoring else { return }
+        purchaseState = .purchasing
         if proProduct == nil {
             await loadProductsWithRetry(maxAttempts: 2)
         }
@@ -89,11 +96,13 @@ final class StoreManager {
                     await transaction.finish()
                     isProUnlocked = true
                     purchaseState = .purchased
+                } else {
+                    purchaseState = .failed("The purchase could not be verified. Please try restoring it.")
                 }
             case .userCancelled:
                 purchaseState = .idle
             case .pending:
-                purchaseState = .idle
+                purchaseState = .pending
             @unknown default:
                 purchaseState = .idle
             }
@@ -103,18 +112,27 @@ final class StoreManager {
     }
 
     func restore() async {
+        guard purchaseState != .purchasing && purchaseState != .restoring else { return }
+        purchaseState = .restoring
         if proProduct == nil {
             await loadProductsWithRetry(maxAttempts: 2)
         }
-        try? await AppStore.sync()
+        purchaseState = .restoring
+        do {
+            try await AppStore.sync()
+        } catch {
+            purchaseState = .failed(error.localizedDescription)
+            return
+        }
         await checkEntitlement()
+        purchaseState = isProUnlocked ? .restored : .failed("No previous Pro purchase was found for this Apple ID.")
     }
 
     private func listenForTransactions() async {
         for await result in Transaction.updates {
             if case .verified(let transaction) = result {
                 if transaction.productID == Self.proProductID {
-                    isProUnlocked = true
+                    await checkEntitlement()
                 }
                 await transaction.finish()
             }

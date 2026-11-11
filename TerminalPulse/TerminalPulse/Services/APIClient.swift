@@ -4,14 +4,20 @@ import OSLog
 actor APIClient {
     private let session: URLSession
     private let directSession: URLSession
+    private let configuredServerURL: String?
+    private let configuredAuthToken: String?
+    private var cachedCapture: (key: String, etag: String, value: CaptureResponse)?
     private let logger = Logger(subsystem: "com.augustbenedikt.TerminalPulse", category: "APIClient")
 
-    init() {
+    init(serverURL: String? = nil, authToken: String? = nil,
+         session: URLSession? = nil, directSession: URLSession? = nil) {
+        configuredServerURL = serverURL
+        configuredAuthToken = authToken
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 10
         config.timeoutIntervalForResource = 30
         config.waitsForConnectivity = true
-        self.session = URLSession(configuration: config)
+        self.session = session ?? URLSession(configuration: config)
 
         // Direct session bypasses system HTTP(S)/SOCKS proxies. This helps when
         // iCloud Private Relay/proxy paths return 502 for private tailnet hosts.
@@ -25,21 +31,39 @@ actor APIClient {
             "ProxyAutoConfigEnable": 0,
             "ProxyAutoDiscoveryEnable": 0
         ]
-        self.directSession = URLSession(configuration: direct)
+        self.directSession = directSession ?? URLSession(configuration: direct)
     }
 
     private var serverURL: String {
-        let raw = UserDefaults.standard.string(forKey: "serverURL") ?? "http://127.0.0.1:8787"
+        let raw = configuredServerURL ?? UserDefaults.standard.string(forKey: "serverURL") ?? "http://127.0.0.1:8787"
         return raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var authToken: String {
-        KeychainService.load(key: "authToken") ?? ""
+        configuredAuthToken ?? KeychainService.load(key: "authToken") ?? ""
+    }
+
+    private func endpoint(path: String) throws -> URLComponents {
+        guard var components = URLComponents(string: serverURL),
+              let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = components.host, !host.isEmpty,
+              components.user == nil, components.password == nil,
+              components.query == nil, components.fragment == nil else {
+            throw APIError.badURL(serverURL)
+        }
+        components.scheme = scheme
+        // Preserve reverse-proxy prefixes, but avoid //capture after pasting a URL.
+        while components.percentEncodedPath.hasSuffix("/") {
+            components.percentEncodedPath.removeLast()
+        }
+        components.percentEncodedPath += path
+        guard components.url != nil else { throw APIError.badURL(serverURL) }
+        return components
     }
 
     private func postRequest(path: String, body: some Encodable) throws -> URLRequest {
-        guard let url = URL(string: serverURL + path) else {
-            throw APIError.badURL(serverURL + path)
+        guard let url = try endpoint(path: path).url else {
+            throw APIError.badURL(serverURL)
         }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -50,9 +74,7 @@ actor APIClient {
     }
 
     private func request(path: String, queryItems: [URLQueryItem] = []) throws -> URLRequest {
-        guard var components = URLComponents(string: serverURL + path) else {
-            throw APIError.badURL(serverURL + path)
-        }
+        var components = try endpoint(path: path)
         if !queryItems.isEmpty {
             components.queryItems = queryItems
         }
@@ -92,6 +114,14 @@ actor APIClient {
     }
 
     private func dataWithDirectFallback(for req: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        // A failed response does not prove a keystroke/window switch failed.
+        // Never automatically replay a mutation through another network path.
+        if req.httpMethod != nil && req.httpMethod != "GET" {
+            let transport = isTailnetLikeHost(req.url?.host) ? directSession : session
+            let (data, response) = try await transport.data(for: req)
+            guard let http = response as? HTTPURLResponse else { throw APIError.badStatus(0) }
+            return (data, http)
+        }
         if isTailnetLikeHost(req.url?.host) {
             do {
                 let (data, response) = try await directSession.data(for: req)
@@ -100,14 +130,15 @@ actor APIClient {
                 }
                 return (data, http)
             } catch {
-                logger.notice("Tailnet direct request failed for \(req.url?.host ?? "unknown", privacy: .public): \(error.localizedDescription, privacy: .public). Falling back to system session")
+                try Task.checkCancellation()
+                logger.notice("Tailnet direct request failed for \(req.url?.host ?? "unknown", privacy: .private): \(error.localizedDescription, privacy: .private). Falling back to system session")
                 let (data, response) = try await session.data(for: req)
                 guard let http = response as? HTTPURLResponse else {
                     throw APIError.badStatus(0)
                 }
 
                 if shouldRetryDirect(request: req, statusCode: http.statusCode) {
-                    logger.notice("System session returned \(http.statusCode, privacy: .public) for \(req.url?.host ?? "unknown", privacy: .public); retrying direct once")
+                    logger.notice("System session returned \(http.statusCode, privacy: .public) for \(req.url?.host ?? "unknown", privacy: .private); retrying direct once")
                     if let (directData, directResponse) = try? await directSession.data(for: req),
                        let directHTTP = directResponse as? HTTPURLResponse {
                         logger.notice("Direct retry after system session returned \(directHTTP.statusCode, privacy: .public)")
@@ -125,7 +156,7 @@ actor APIClient {
             }
 
             if shouldRetryDirect(request: req, statusCode: http.statusCode) {
-                logger.notice("Proxy-like status \(http.statusCode, privacy: .public) for \(req.url?.host ?? "unknown", privacy: .public); retrying direct")
+                logger.notice("Proxy-like status \(http.statusCode, privacy: .public) for \(req.url?.host ?? "unknown", privacy: .private); retrying direct")
                 if let (directData, directResponse) = try? await directSession.data(for: req),
                    let directHTTP = directResponse as? HTTPURLResponse,
                    (200...299).contains(directHTTP.statusCode) {
@@ -135,10 +166,11 @@ actor APIClient {
             }
             return (data, http)
         } catch {
+            try Task.checkCancellation()
             guard shouldRetryDirect(request: req, error: error) else {
                 throw error
             }
-            logger.notice("Network error \(error.localizedDescription, privacy: .public) for \(req.url?.host ?? "unknown", privacy: .public); retrying direct")
+            logger.notice("Network error \(error.localizedDescription, privacy: .private) for \(req.url?.host ?? "unknown", privacy: .private); retrying direct")
             let (directData, directResponse) = try await directSession.data(for: req)
             guard let directHTTP = directResponse as? HTTPURLResponse else {
                 throw APIError.badStatus(0)
@@ -163,14 +195,56 @@ actor APIClient {
     }
 
     func fetchCapture(lines: Int = 80, target: String? = nil) async throws -> CaptureResponse {
-        var items: [URLQueryItem] = [.init(name: "lines", value: "\(lines)")]
+        var items: [URLQueryItem] = [.init(name: "lines", value: "\(lines)"), .init(name: "compact", value: "true")]
         if let target { items.append(.init(name: "target", value: target)) }
-        let req = try request(path: "/capture", queryItems: items)
+        var req = try request(path: "/capture", queryItems: items)
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        let key = (req.url?.absoluteString ?? "") + (req.value(forHTTPHeaderField: "Authorization") ?? "")
+        let cached = cachedCapture.flatMap { $0.key == key ? $0 : nil }
+        if let cached { req.setValue(cached.etag, forHTTPHeaderField: "If-None-Match") }
         let (data, http) = try await dataWithDirectFallback(for: req)
+        if http.statusCode == 304, let cached {
+            let value = cached.value
+            return CaptureResponse(raw: value.raw, hash: value.hash, pane: value.pane,
+                                   parsedLines: value.parsedLines, ts: TerminalTimestamp.string(from: Date()))
+        }
         guard http.statusCode == 200 else {
             throw APIError.badStatus(http.statusCode, statusDetail(from: data))
         }
-        return try JSONDecoder().decode(CaptureResponse.self, from: data)
+        let value = try JSONDecoder().decode(CaptureResponse.self, from: data)
+        if let etag = http.value(forHTTPHeaderField: "ETag") {
+            cachedCapture = (key, etag, value)
+        } else {
+            cachedCapture = nil
+        }
+        return value
+    }
+
+    /// Checks the authenticated terminal path without changing focus or guessing a target.
+    func checkReadiness() async throws -> TerminalReadiness {
+        try Task.checkCancellation()
+        let health = try await fetchHealth()
+        try Task.checkCancellation()
+        let sessions: SessionsResponse
+        do {
+            sessions = try await fetchSessions()
+        } catch let error as APIError {
+            try Task.checkCancellation()
+            guard error.statusCode == 502, !health.tmux else { throw error }
+            return .tmuxUnavailable
+        }
+        try Task.checkCancellation()
+        guard !sessions.sessions.isEmpty else { return .noSessions }
+        do {
+            // The default target also supports older servers and Unicode session names.
+            _ = try await fetchCapture()
+            try Task.checkCancellation()
+            return .outputReceived
+        } catch {
+            try Task.checkCancellation()
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { throw error }
+            return .captureUnavailable
+        }
     }
 
     func fetchHealth() async throws -> HealthResponse {
@@ -252,7 +326,9 @@ enum APIError: LocalizedError {
                 return "Server returned status \(code): \(detail)"
             }
             return "Server returned status \(code)"
-        case .badURL(let url): return "Invalid URL: \(url)"
+        case .badURL:
+            // A pasted URL can contain credentials; never echo those into errors.
+            return String(localized: "Enter an http:// or https:// server address without a username, password, query, or fragment.")
         }
     }
 }

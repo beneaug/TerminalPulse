@@ -1,0 +1,67 @@
+default_platform(:ios)
+
+platform :ios do
+  def asc_key
+    app_store_connect_api_key(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key_filepath: ENV.fetch("ASC_KEY_FILEPATH")
+    )
+  end
+
+  desc "Upload App Store screenshots only"
+  lane :upload_screenshots do
+    deliver(
+      api_key: asc_key,
+      app_identifier: "com.augustbenedikt.TerminalPulse",
+      app_version: ENV["APP_VERSION"],
+      screenshots_path: "fastlane/screenshots",
+      skip_binary_upload: true,
+      skip_metadata: true,
+      skip_app_version_update: ENV["APP_VERSION"].nil?,
+      overwrite_screenshots: true,
+      use_live_version: ENV["USE_LIVE_VERSION"] == "1",
+      submit_for_review: false,
+      run_precheck_before_submit: false,
+      force: true
+    )
+  end
+
+  desc "Upload App Store text metadata only (description, keywords, what's new, URLs, review info) for all locales"
+  lane :upload_metadata do
+    deliver(
+      api_key: asc_key,
+      app_identifier: "com.augustbenedikt.TerminalPulse",
+      app_version: ENV["APP_VERSION"],
+      metadata_path: "fastlane/metadata",
+      skip_binary_upload: true,
+      skip_screenshots: true,
+      skip_metadata: false,
+      skip_app_version_update: ENV["APP_VERSION"].nil?,
+      use_live_version: ENV["USE_LIVE_VERSION"] == "1",
+      submit_for_review: false,
+      run_precheck_before_submit: false,
+      force: true
+    )
+  end
+
+  desc "Upload both metadata and screenshots in one shot"
+  lane :upload_listing do
+    deliver(
+      api_key: asc_key,
+      app_identifier: "com.augustbenedikt.TerminalPulse",
+      app_version: ENV["APP_VERSION"],
+      metadata_path: "fastlane/metadata",
+      screenshots_path: "fastlane/screenshots",
+      skip_binary_upload: true,
+      skip_screenshots: false,
+      skip_metadata: false,
+      skip_app_version_update: ENV["APP_VERSION"].nil?,
+      overwrite_screenshots: true,
+      use_live_version: ENV["USE_LIVE_VERSION"] == "1",
+      submit_for_review: false,
+      run_precheck_before_submit: false,
+      force: true
+    )
+  end
+end

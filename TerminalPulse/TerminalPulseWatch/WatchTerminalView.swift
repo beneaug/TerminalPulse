@@ -1,41 +1,94 @@
-import AVKit
 import SwiftUI
 import WatchKit
 
 struct WatchTerminalView: View {
     @Bindable var bridge: PhoneBridge
     @State private var showTextInput = false
+    @State private var inputDraft = ""
+    @State private var inputPaneID: String?
+    @State private var inputContextID: String?
+    @State private var readingSnapshot: WatchReadingSnapshot<AttributedString>?
+    @State private var visibleLine: Int?
+    @AppStorage("protectScreenPreviews") private var protectScreenPreviews = true
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+    @Environment(\.scenePhase) private var scenePhase
+
+    private var concealed: Bool {
+        WatchDisplayPolicy.shouldConceal(
+            protectScreenPreviews: protectScreenPreviews,
+            isActive: scenePhase == .active,
+            isLuminanceReduced: isLuminanceReduced
+        )
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
-            TerminalColors.defaultBackground
-                .ignoresSafeArea()
-
-            WatchTerminalContent(bridge: bridge) { direction in
-                bridge.switchSession(direction: direction)
-            }
-
-            WatchWindowSwitchOverlay(bridge: bridge)
-
-            WatchStatusOverlay(bridge: bridge)
-
-            if bridge.isProUnlocked {
-                VStack {
-                    Spacer()
-                    WatchInputToolbar(bridge: bridge, showTextInput: $showTextInput)
+            TerminalColors.defaultBackground.ignoresSafeArea()
+            // Do not use an opacity overlay: private text must leave accessibility too.
+            if concealed {
+                VStack(spacing: 8) {
+                    Image(systemName: "lock.fill")
+                        .font(.title3)
+                        .accessibilityHidden(true)
+                    Text("Terminal hidden")
+                        .font(.caption)
+                    Text("Raise your wrist to view")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                VStack(spacing: 0) {
+                    WatchStatusOverlay(bridge: bridge, sessionLabel: readingSnapshot?.sessionLabel ?? bridge.sessionLabel,
+                                       isReading: readingSnapshot != nil)
+                    HStack(spacing: 4) {
+                        Text(LocalizedStringKey(readingSnapshot == nil ? "Live" : "Reading"))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        Button {
+                            if readingSnapshot == nil {
+                                readingSnapshot = WatchReadingSnapshot(lines: bridge.renderedLines, sessionLabel: bridge.sessionLabel)
+                            } else {
+                                readingSnapshot = nil
+                            }
+                        } label: {
+                            Label(LocalizedStringKey(readingSnapshot == nil ? "Read" : "Latest"),
+                                  systemImage: readingSnapshot == nil ? "pause.fill" : "arrow.down.to.line")
+                                .font(.caption2)
+                                .frame(minHeight: 32)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text(LocalizedStringKey(readingSnapshot == nil ? "Pause to read" : "Show latest output")))
+                    }
+                    .padding(.horizontal, 8)
+                    WatchTerminalContent(bridge: bridge, snapshot: readingSnapshot, visibleLine: $visibleLine) { direction in
+                        guard readingSnapshot == nil else { return }
+                        bridge.switchSession(direction: direction)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                    if bridge.isProUnlocked && !isLuminanceReduced && readingSnapshot == nil {
+                        WatchInputToolbar(bridge: bridge) {
+                            inputPaneID = bridge.currentPaneId
+                            inputContextID = bridge.currentInputContextID
+                            showTextInput = true
+                        }
+                    }
+                }
+                if readingSnapshot == nil {
+                    WatchWindowSwitchOverlay(bridge: bridge)
                 }
             }
         }
-        .ignoresSafeArea()
-        .background(
-            VideoPlayer(player: nil)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-                .opacity(0)
-        )
         .sheet(isPresented: $showTextInput) {
-            WatchTextInputView(bridge: bridge)
+            // Remove sheet contents immediately, even during dismissal animation.
+            if !concealed {
+                WatchTextInputView(bridge: bridge, text: $inputDraft, paneID: inputPaneID, contextID: inputContextID)
+            }
+        }
+        .onChange(of: concealed) { _, hidden in
+            if hidden { showTextInput = false }
         }
         .onAppear {
             bridge.setLuminanceReduced(isLuminanceReduced)
@@ -50,8 +103,12 @@ struct WatchTerminalView: View {
 
 private struct WatchTerminalContent: View {
     let bridge: PhoneBridge
+    let snapshot: WatchReadingSnapshot<AttributedString>?
+    @Binding var visibleLine: Int?
     var onSessionSwipe: ((Int) -> Void)?
+    private var isReading: Bool { snapshot != nil }
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var switchOffsetX: CGFloat = 0
     @State private var switchOpacity: Double = 1
     @State private var pendingScrollTask: Task<Void, Never>?
@@ -67,11 +124,20 @@ private struct WatchTerminalContent: View {
             pendingScrollTask = nil
         }
         .onChange(of: bridge.sessionTransitionToken) {
+            guard !isReading, !reduceMotion, !isLuminanceReduced else { return }
             let direction = bridge.sessionTransitionDirection >= 0 ? 1 : -1
             let startOffset: CGFloat = direction > 0 ? 12 : -12
             switchOffsetX = startOffset
             switchOpacity = 0.84
             withAnimation(.easeOut(duration: 0.18)) {
+                switchOffsetX = 0
+                switchOpacity = 1
+            }
+        }
+        .onChange(of: isReading) { _, reading in
+            if reading {
+                pendingScrollTask?.cancel()
+                pendingScrollTask = nil
                 switchOffsetX = 0
                 switchOpacity = 1
             }
@@ -101,7 +167,8 @@ private struct WatchTerminalContent: View {
 
     @ViewBuilder
     private var terminalBody: some View {
-        if bridge.renderedLines.isEmpty {
+        let lines = snapshot?.lines ?? bridge.renderedLines
+        if lines.isEmpty {
             VStack(spacing: 6) {
                 Spacer()
                 Image(systemName: "terminal")
@@ -116,8 +183,8 @@ private struct WatchTerminalContent: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(bridge.renderedLines.enumerated()), id: \.offset) { index, line in
-                            Text(line)
+                        ForEach(lines.indices, id: \.self) { index in
+                            Text(lines[index])
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .id(index)
                         }
@@ -125,19 +192,23 @@ private struct WatchTerminalContent: View {
                             .frame(height: 1)
                             .id("bottom")
                     }
-                    .padding(.top, 14)
-                    .padding(.horizontal, 2)
-                    .padding(.bottom, bridge.isProUnlocked ? 40 : 8)
+                    .scrollTargetLayout()
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 6)
                 }
-                .defaultScrollAnchor(.bottom)
-                .ignoresSafeArea()
+                .defaultScrollAnchor(isReading ? .top : .bottom)
+                .scrollPosition(id: $visibleLine)
                 .onAppear {
-                    scrollToBottom(proxy)
+                    if isReading, let visibleLine {
+                        proxy.scrollTo(visibleLine, anchor: .top)
+                    } else {
+                        scrollToBottom(proxy)
+                    }
                 }
-                .onChange(of: bridge.lastUpdate) {
-                    scrollToBottom(proxy)
+                .onChange(of: isReading) { _, reading in
+                    if !reading { scrollToBottom(proxy) }
                 }
-                .onChange(of: bridge.renderedLines.count) {
+                .onChange(of: bridge.renderedLines) {
                     scrollToBottom(proxy)
                 }
                 .onChange(of: bridge.sessionTransitionToken) {
@@ -153,7 +224,7 @@ private struct WatchTerminalContent: View {
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy, settleDelayMs: Int = 0) {
-        guard !isLuminanceReduced else { return }
+        guard !isReading, !isLuminanceReduced else { return }
         pendingScrollTask?.cancel()
         pendingScrollTask = Task { @MainActor in
             await Task.yield()
@@ -163,18 +234,13 @@ private struct WatchTerminalContent: View {
                 guard !Task.isCancelled else { return }
             }
             proxy.scrollTo("bottom", anchor: .bottom)
-            try? await Task.sleep(for: .milliseconds(60))
-            guard !Task.isCancelled, !isLuminanceReduced else { return }
-            proxy.scrollTo("bottom", anchor: .bottom)
-            try? await Task.sleep(for: .milliseconds(140))
-            guard !Task.isCancelled, !isLuminanceReduced else { return }
-            proxy.scrollTo("bottom", anchor: .bottom)
         }
     }
 }
 
 private struct WatchWindowSwitchOverlay: View {
     let bridge: PhoneBridge
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -196,7 +262,7 @@ private struct WatchWindowSwitchOverlay: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .allowsHitTesting(false)
-        .animation(.easeOut(duration: 0.2), value: bridge.switchedWindowFlashToken)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: bridge.switchedWindowFlashToken)
     }
 }
 
@@ -204,62 +270,42 @@ private struct WatchWindowSwitchOverlay: View {
 
 private struct WatchStatusOverlay: View {
     let bridge: PhoneBridge
+    let sessionLabel: String
+    let isReading: Bool
 
     var body: some View {
         ZStack {
-            TimelineView(.everyMinute) { context in
-                Text(context.date, format: .dateTime.hour().minute())
-                    .font(.system(size: 8, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .lineLimit(1)
-            }
-
             HStack(spacing: 3) {
                 Circle()
-                    .fill(bridge.isConnected ? .green : .red)
+                    .fill(bridge.isConnected ? TerminalColors.productAccent : .red)
                     .frame(width: 4, height: 4)
                     .accessibilityLabel(bridge.isConnected ? "Connected" : "Disconnected")
 
-                if !bridge.sessionLabel.isEmpty {
-                    Text(bridge.sessionLabel)
-                        .font(.system(size: 8, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.green.opacity(0.7))
+                if !sessionLabel.isEmpty {
+                    Text(sessionLabel)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(TerminalColors.productAccent.opacity(0.72))
                         .lineLimit(1)
                 }
 
                 Spacer()
 
-                if let lastUpdate = bridge.lastUpdate {
-                    Text(lastUpdate, style: .relative)
-                        .font(.system(size: 7, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.35))
-                        .lineLimit(1)
-                }
-
                 Button {
                     bridge.requestRefresh()
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 8, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Refresh")
+                .disabled(isReading)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 6)
         .padding(.top, 1)
-        .background(
-            LinearGradient(
-                colors: [
-                    TerminalColors.defaultBackground,
-                    TerminalColors.defaultBackground.opacity(0.6),
-                    .clear
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
+        .background(TerminalColors.defaultBackground)
     }
 }
 
@@ -292,10 +338,13 @@ private let secondaryKeys: [ToolbarKey] = [
 
 private struct WatchInputToolbar: View {
     let bridge: PhoneBridge
-    @Binding var showTextInput: Bool
+    let presentTextInput: () -> Void
     @State private var holdingKey: String?
     @State private var holdTimer: Timer?
     @State private var holdStartTime: Date?
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isLuminanceReduced) private var reduced
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let holdMaxDuration: TimeInterval = 30
 
     var body: some View {
@@ -304,7 +353,7 @@ private struct WatchInputToolbar: View {
             if case .sent(let label) = bridge.sendStatus {
                 Text("sent: \(label)")
                     .font(.system(size: 8, design: .monospaced))
-                    .foregroundStyle(.green.opacity(0.7))
+                    .foregroundStyle(TerminalColors.productAccent.opacity(0.72))
                     .transition(.opacity)
             } else if case .error(let msg) = bridge.sendStatus {
                 Text(msg)
@@ -319,7 +368,7 @@ private struct WatchInputToolbar: View {
                     ForEach(primaryKeys) { key in
                         if key.id == "kbd" {
                             ToolbarButton(label: key.label, isHolding: false) {
-                                showTextInput = true
+                                presentTextInput()
                             }
                         } else {
                             toolbarButton(for: key)
@@ -338,36 +387,25 @@ private struct WatchInputToolbar: View {
             }
         }
         .padding(.bottom, 2)
-        .background(
-            LinearGradient(
-                colors: [
-                    .clear,
-                    TerminalColors.defaultBackground.opacity(0.8),
-                    TerminalColors.defaultBackground
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
-        .animation(.easeInOut(duration: 0.2), value: bridge.sendStatus)
+        .background(TerminalColors.defaultBackground)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: bridge.sendStatus)
         .onDisappear { stopHold() }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { stopHold() } }
+        .onChange(of: reduced) { _, value in if value { stopHold() } }
     }
 
     @ViewBuilder
     private func toolbarButton(for key: ToolbarKey) -> some View {
         if key.supportsHold {
             ToolbarButton(label: key.label, isHolding: holdingKey == key.id) {
-                bridge.sendKeys(special: key.special)
+                bridge.sendKeys(special: key.special, expectedPaneID: bridge.currentPaneId, expectedContextID: bridge.currentInputContextID)
             }
             .onTapGesture(count: 2) {
                 toggleHold(for: key)
             }
-            .onTapGesture(count: 1) {
-                bridge.sendKeys(special: key.special)
-            }
         } else {
             ToolbarButton(label: key.label, isHolding: false) {
-                bridge.sendKeys(special: key.special)
+                bridge.sendKeys(special: key.special, expectedPaneID: bridge.currentPaneId, expectedContextID: bridge.currentInputContextID)
             }
         }
     }
@@ -378,20 +416,27 @@ private struct WatchInputToolbar: View {
             stopHold()
             WKInterfaceDevice.current().play(.failure)
         } else {
-            // Start holding
+            // Bind repeat input to the same capture context and pane for its lifetime.
             stopHold()
+            guard let contextID = bridge.currentInputContextID, let paneID = bridge.currentPaneId else { return }
             holdingKey = key.id
             holdStartTime = Date()
             WKInterfaceDevice.current().play(.success)
             holdTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { _ in
                 Task { @MainActor in
+                    // A timer tick may already be queued when privacy/Reading removes the toolbar.
+                    guard holdingKey == key.id, scenePhase == .active, !reduced else { return }
+                    guard bridge.currentInputContextID == contextID, bridge.currentPaneId == paneID else {
+                        stopHold()
+                        return
+                    }
                     // Auto-cancel after 30s to prevent runaway timer
                     if let start = holdStartTime, Date().timeIntervalSince(start) > holdMaxDuration {
                         stopHold()
                         WKInterfaceDevice.current().play(.failure)
                         return
                     }
-                    bridge.sendKeys(special: key.special)
+                    bridge.sendKeys(special: key.special, expectedPaneID: paneID, expectedContextID: contextID)
                 }
             }
         }
@@ -416,10 +461,10 @@ private struct ToolbarButton: View {
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundStyle(isHolding ? .black : .white.opacity(0.85))
                 .padding(.horizontal, 6)
-                .padding(.vertical, 5)
+                .frame(minWidth: 20, minHeight: 32)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(isHolding ? Color.green : Color.white.opacity(0.12))
+                        .fill(isHolding ? TerminalColors.productAccent : Color.white.opacity(0.12))
                 )
         }
         .buttonStyle(.plain)
@@ -431,7 +476,9 @@ private struct ToolbarButton: View {
 private struct WatchTextInputView: View {
     let bridge: PhoneBridge
     @Environment(\.dismiss) private var dismiss
-    @State private var text = ""
+    @Binding var text: String
+    let paneID: String?
+    let contextID: String?
 
     var body: some View {
         VStack(spacing: 12) {
@@ -442,20 +489,46 @@ private struct WatchTextInputView: View {
             TextField("Type or dictate", text: $text)
                 .font(.system(size: 14, design: .monospaced))
 
+            if contextID == nil || contextID != bridge.currentInputContextID {
+                Text("Refresh on iPhone to enable input.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if contextID == nil {
+                    Text("Update both apps if needed.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            } else if paneID != bridge.currentPaneId {
+                Text("Pane changed. Reopen input.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if case .error(let message) = bridge.sendStatus {
+                Text(message)
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+            }
+
             HStack(spacing: 12) {
                 Button("Cancel") {
                     dismiss()
                 }
                 .foregroundStyle(.white.opacity(0.5))
 
-                Button("Done") {
-                    if !text.isEmpty {
-                        bridge.sendKeys(text: text)
+                Button("Send text") {
+                    guard !text.isEmpty, let paneID, let contextID,
+                          paneID == bridge.currentPaneId, contextID == bridge.currentInputContextID else { return }
+                    let submittedText = text
+                    bridge.sendKeys(text: submittedText, expectedPaneID: paneID, expectedContextID: contextID) { sent in
+                        guard sent else { return }
+                        if text == submittedText { text = "" }
+                        dismiss()
                     }
-                    dismiss()
                 }
-                .foregroundStyle(.green)
+                .foregroundStyle(TerminalColors.productAccent)
                 .fontWeight(.semibold)
+                .disabled(text.isEmpty || paneID == nil || paneID != bridge.currentPaneId || contextID == nil || contextID != bridge.currentInputContextID || bridge.sendStatus == .sending)
             }
         }
         .padding()

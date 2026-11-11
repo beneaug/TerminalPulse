@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import json
 import os
+import secrets
 import socket
 import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, model_validator
 
@@ -27,13 +30,13 @@ from tmux_bridge import (
 app = FastAPI(title="TerminalPulse", version="1.0.0")
 _security = HTTPBearer()
 
-TOKEN = os.environ.get("TP_TOKEN", "changeme")
+TOKEN = os.environ.get("TP_TOKEN", "changeme").strip()
 NOTIFY_TOKEN = os.environ.get("TP_NOTIFY_TOKEN", "").strip()
 NOTIFY_WEBHOOK_URL = os.environ.get("TP_NOTIFY_WEBHOOK_URL", "https://www.tmuxonwatch.com/api/webhook")
 NOTIFY_REGISTER_URL = os.environ.get("TP_NOTIFY_REGISTER_URL", "https://www.tmuxonwatch.com/api/push/register")
 NOTIFY_UNREGISTER_URL = os.environ.get("TP_NOTIFY_UNREGISTER_URL", "https://www.tmuxonwatch.com/api/push/unregister")
 
-if TOKEN == "changeme":
+if not TOKEN.strip() or TOKEN == "changeme":
     import sys
 
     print(
@@ -46,7 +49,7 @@ if TOKEN == "changeme":
 
 
 def _verify(creds: HTTPAuthorizationCredentials = Depends(_security)) -> str:
-    if creds.credentials != TOKEN:
+    if not secrets.compare_digest(creds.credentials.encode("utf-8"), TOKEN.encode("utf-8")):
         raise HTTPException(status_code=401, detail="Invalid token")
     return creds.credentials
 
@@ -70,45 +73,71 @@ async def notify_config(_: str = Depends(_verify)):
     }
 
 
+async def _capture_snapshot(lines: int, target: str | None) -> tuple[str, dict | None, str]:
+    try:
+        # Resolve once so an external focus change cannot label one pane's text
+        # with another pane's metadata.
+        pane = await get_pane_info(target=target)
+        raw = await capture_pane(lines=lines, target=pane.pane_id)
+    except (RuntimeError, ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    metadata = {
+        "session": pane.session_name,
+        "winIndex": pane.window_index,
+        "winName": pane.window_name,
+        "paneId": pane.pane_id,
+        "paneCurrentCommand": getattr(pane, "pane_current_command", getattr(pane, "current_command", None)),
+    }
+    # Metadata changes matter even when two panes contain identical text.
+    identity = json.dumps([raw, metadata], ensure_ascii=False, separators=(",", ":"))
+    return raw, metadata, hashlib.sha256(identity.encode()).hexdigest()
+
+
+_captures_in_flight: dict[tuple[int, str | None], asyncio.Task] = {}
+
+
+async def _shared_capture(lines: int, target: str | None):
+    key = (lines, target)
+    task = _captures_in_flight.get(key)
+    if task is None or task.done():
+        task = asyncio.create_task(_capture_snapshot(lines, target))
+        _captures_in_flight[key] = task
+        def completed(done):
+            if _captures_in_flight.get(key) is done:
+                _captures_in_flight.pop(key, None)
+            if not done.cancelled():
+                done.exception()  # Retrieve exceptions even if every client disconnected.
+        task.add_done_callback(completed)
+    return await asyncio.shield(task)
+
+
 @app.get("/capture")
 async def capture(
+    request: Request,
+    response: Response,
     _: str = Depends(_verify),
     lines: int = Query(default=80, ge=1, le=500),
     target: str | None = Query(default=None),
+    compact: bool = Query(default=False),
 ):
-    try:
-        raw = await capture_pane(lines=lines, target=target)
-    except (RuntimeError, ValueError) as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
-
-    try:
-        pane = await get_pane_info(target=target)
-    except (RuntimeError, ValueError):
-        pane = None
-
-    content_hash = hashlib.sha256(raw.encode()).hexdigest()[:16]
+    raw, metadata, content_hash = await _shared_capture(lines, target)
+    etag = f'"{content_hash}-{"compact" if compact else "full"}"'
+    headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
+    validators = [v.strip().removeprefix("W/") for v in request.headers.get("if-none-match", "").split(",")]
+    if etag in validators or "*" in validators:
+        return Response(status_code=304, headers=headers)
+    response.headers.update(headers)
     parsed = parse_lines(raw)
 
     # Strip trailing empty lines to avoid dead space on watch
     while parsed and all(run.get("t", "").strip() == "" for run in parsed[-1]):
         parsed.pop()
 
-    pane_current_command = None
-    if pane is not None:
-        pane_current_command = getattr(pane, "pane_current_command", None)
-        if pane_current_command is None:
-            pane_current_command = getattr(pane, "current_command", None)
-
     return {
-        "raw": raw,
+        # Retain the field for existing decoders; old clients still get raw text.
+        "raw": "" if compact else raw,
         "hash": content_hash,
-        "pane": {
-            "session": pane.session_name,
-            "winIndex": pane.window_index,
-            "winName": pane.window_name,
-            "paneId": pane.pane_id,
-            "paneCurrentCommand": pane_current_command,
-        } if pane else None,
+        "pane": metadata,
         "parsed_lines": parsed,
         "ts": datetime.now(timezone.utc).isoformat(),
     }
@@ -118,7 +147,7 @@ async def capture(
 async def sessions(_: str = Depends(_verify)):
     try:
         sess_list = await list_sessions()
-    except RuntimeError as exc:
+    except (RuntimeError, FileNotFoundError) as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
     return {
@@ -138,7 +167,7 @@ async def windows(
         windows_list = await list_windows(session=session)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    except RuntimeError as exc:
+    except (RuntimeError, FileNotFoundError) as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
     return {
@@ -205,7 +234,7 @@ async def post_send_keys(
         await send_keys(text=body.text, special=body.special, target=body.target)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    except RuntimeError as exc:
+    except (RuntimeError, FileNotFoundError) as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     return {"ok": True}
 
@@ -219,7 +248,7 @@ async def post_switch_window(
         pane = await switch_window(direction=body.direction, target=body.target)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    except RuntimeError as exc:
+    except (RuntimeError, FileNotFoundError) as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
     return {
