@@ -8,7 +8,7 @@ This pass continues `2cd2ede` on `audit/value-readiness-r49`. It preserves the e
 - The step header no longer hides the language menu from accessibility. Japanese setup and the new guidance are localized.
 - Server guidance uses a Mac hostname, explicitly explains that 127.0.0.1 means the phone, and retains manual/QR setup. Successful connection button text stays black on lime.
 - API requests normalize pasted trailing slashes while preserving reverse-proxy path prefixes. Unsupported schemes, absent hosts, embedded credentials, query strings and fragments fail before attaching/sending a token. Configuration errors do not echo potentially secret URL text.
-- Network diagnostics redact hostnames and localized error details; HTTP status codes remain visible.
+- Network, notification-registration, and polling diagnostics redact hostnames, server response bodies, and localized error details; HTTP status codes remain visible.
 - Pending StoreKit purchases display an approval-waiting explanation. They do not grant input; verified entitlement approval updates the state. Purchase retry remains available so a declined Ask to Buy cannot permanently strand the button. Local StoreKit tests cover this transition.
 - English/Japanese store description and release-note drafts explain the actual free/paid split and privacy/background limitations. Removed an unmeasured battery claim from README.
 

@@ -389,7 +389,7 @@ final class PollingService {
             if sessions.isEmpty {
                 return (false, error.localizedDescription)
             }
-            logger.notice("Using cached sessions after refresh failure: \(error.localizedDescription, privacy: .public)")
+            logger.notice("Using cached sessions after refresh failure: \(error.localizedDescription, privacy: .private)")
         }
 
         guard isCurrentWatchContext(inputContextID, connection: connection) else { return (false, inputContextError) }

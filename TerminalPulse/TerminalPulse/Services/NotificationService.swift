@@ -72,7 +72,7 @@ enum NotificationService {
     static func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error {
-                logger.error("Notification permission error: \(error.localizedDescription, privacy: .public)")
+                logger.error("Notification permission error: \(error.localizedDescription, privacy: .private)")
             }
             guard granted else { return }
             DispatchQueue.main.async {
@@ -135,7 +135,7 @@ enum NotificationService {
     }
 
     static func handleAPNsRegistrationFailure(_ error: Error) {
-        logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
+        logger.error("APNs registration failed: \(error.localizedDescription, privacy: .private)")
     }
 
     static func notifyToken() -> String? {
@@ -248,14 +248,14 @@ enum NotificationService {
             guard let http = response as? HTTPURLResponse else { return }
             guard (200...299).contains(http.statusCode) else {
                 let body = String(data: data, encoding: .utf8) ?? ""
-                logger.error("Push registration failed with status \(http.statusCode, privacy: .public): \(body, privacy: .public)")
+                logger.error("Push registration failed with status \(http.statusCode, privacy: .public): \(body, privacy: .private)")
                 return
             }
 
             defaults.set(deviceToken, forKey: registeredDeviceTokenKey)
             defaults.set(notifyToken, forKey: registeredNotifyTokenKey)
         } catch {
-            logger.error("Push registration request failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("Push registration request failed: \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -297,7 +297,7 @@ enum NotificationService {
                 }
             }
         } catch {
-            logger.error("Push unregister request failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("Push unregister request failed: \(error.localizedDescription, privacy: .private)")
         }
     }
 
