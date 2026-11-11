@@ -23,14 +23,56 @@ private final class StubProtocol: URLProtocol {
 final class APIClientTests: XCTestCase {
     private let capture = Data(#"{"raw":"","hash":"content","pane":{"session":"dev","winIndex":1,"winName":"build","paneId":"%1"},"parsed_lines":[[{"t":"日本語 ✓"}]],"ts":"2026-09-09T12:00:00.000Z"}"#.utf8)
 
-    private func client() -> APIClient {
+    private func client(serverURL: String = "https://unit-test.ts.net") -> APIClient {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [StubProtocol.self]
         config.urlCache = nil
         let session = URLSession(configuration: config)
         addTeardownBlock { session.invalidateAndCancel(); StubProtocol.handler = nil }
-        return APIClient(serverURL: "https://unit-test.ts.net", authToken: "synthetic-test-token",
+        return APIClient(serverURL: serverURL, authToken: "synthetic-test-token",
                          session: session, directSession: session)
+    }
+
+    func testPastedTrailingSlashesPreserveGatewayAndCaptureQuery() async throws {
+        let api = client(serverURL: "  https://unit-test.ts.net/gateway///\n")
+        let capture = capture
+        StubProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/gateway/capture")
+            let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            XCTAssertEqual(query.first(where: { $0.name == "target" })?.value, "%1")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer synthetic-test-token")
+            return (200, [:], capture)
+        }
+        _ = try await api.fetchCapture(target: "%1")
+    }
+
+    func testPastedTrailingSlashAlsoWorksForDeliberateInput() async throws {
+        let api = client(serverURL: "https://unit-test.ts.net/gateway/")
+        StubProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/gateway/send-keys")
+            XCTAssertEqual(request.httpMethod, "POST")
+            return (200, [:], Data(#"{"ok":true}"#.utf8))
+        }
+        _ = try await api.sendKeys(text: "echo hello", target: "%1")
+    }
+
+    func testInvalidServerAddressNeverSendsTokenOrEchoesCredentials() async {
+        for address in ["unit-test.ts.net", "file:///tmp/terminal", "ftp://unit-test.ts.net",
+                        "https://user:secret@unit-test.ts.net", "https://unit-test.ts.net?token=secret",
+                        "https://unit-test.ts.net#secret", "https://"] {
+            let api = client(serverURL: address)
+            StubProtocol.handler = { _ in
+                XCTFail("Invalid server configuration must fail before any network request")
+                return (200, [:], Data())
+            }
+            do {
+                _ = try await api.fetchHealth()
+                XCTFail("Expected invalid address to be rejected")
+            } catch {
+                guard case APIError.badURL = error else { XCTFail("Expected a configuration error"); continue }
+                XCTAssertFalse(error.localizedDescription.contains("secret"))
+            }
+        }
     }
 
     func testConditionalResponseReusesDecodedUnicodeWithoutParsingABody() async throws {

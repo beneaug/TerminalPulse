@@ -128,7 +128,7 @@ No. TerminalPulse captures output from tmux panes. If you don't use tmux, this a
 The installer-managed launchd service binds to `0.0.0.0` so iPhone/watch clients can connect over LAN or Tailscale. If you run `python server/main.py` directly, it binds to `127.0.0.1` unless you pass a different host.
 
 **How much battery does it use on the Watch?**
-The Watch app only receives data when the iPhone pushes updates. It doesn't poll independently. Battery impact is minimal — comparable to other WatchConnectivity apps.
+The Watch app only receives data when the iPhone pushes updates. It doesn't poll independently. Battery use depends on refresh pace, output volume, connectivity, and device state; it has not been benchmarked on the current release candidate.
 
 **Can I see scrollback history?**
 The `lines` parameter controls how many lines to capture (default: 80). You can increase this, but Watch screens are small.

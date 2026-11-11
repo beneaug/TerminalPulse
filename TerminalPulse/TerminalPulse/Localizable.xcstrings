@@ -2,6 +2,9 @@
   "sourceLanguage" : "en",
   "version" : "1.0",
   "strings" : {
+    "Use your Mac’s LAN address or Tailscale hostname. 127.0.0.1 points to this iPhone." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "Mac の LAN アドレスまたは Tailscale のホスト名を使用してください。127.0.0.1 はこの iPhone 自体を指します。"}}}},
+    "Purchase awaiting approval. Pro unlocks when Apple confirms it; free features remain available." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "購入の承認待ちです。Apple が購入を確認すると Pro が有効になります。無料機能は引き続き利用できます。"}}}},
+    "Enter an http:// or https:// server address without a username, password, query, or fragment." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "http:// または https:// で始まるサーバーアドレスを入力してください。ユーザー名、パスワード、クエリ、フラグメントは含めないでください。"}}}},
     "Terminal connection changed. Refresh the terminal and reopen input before sending. If this continues, update both apps." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "ターミナルの接続が変更されました。送信する前にターミナルを更新し、入力画面を開き直してください。問題が続く場合は両方のアプリをアップデートしてください。"}}}},
     "Protect screen previews" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "画面プレビューを保護"}}}},
     "Hide notification details" : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "通知の詳細を隠す"}}}},

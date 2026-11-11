@@ -43,9 +43,27 @@ actor APIClient {
         configuredAuthToken ?? KeychainService.load(key: "authToken") ?? ""
     }
 
+    private func endpoint(path: String) throws -> URLComponents {
+        guard var components = URLComponents(string: serverURL),
+              let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = components.host, !host.isEmpty,
+              components.user == nil, components.password == nil,
+              components.query == nil, components.fragment == nil else {
+            throw APIError.badURL(serverURL)
+        }
+        components.scheme = scheme
+        // Preserve reverse-proxy prefixes, but avoid //capture after pasting a URL.
+        while components.percentEncodedPath.hasSuffix("/") {
+            components.percentEncodedPath.removeLast()
+        }
+        components.percentEncodedPath += path
+        guard components.url != nil else { throw APIError.badURL(serverURL) }
+        return components
+    }
+
     private func postRequest(path: String, body: some Encodable) throws -> URLRequest {
-        guard let url = URL(string: serverURL + path) else {
-            throw APIError.badURL(serverURL + path)
+        guard let url = try endpoint(path: path).url else {
+            throw APIError.badURL(serverURL)
         }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -56,9 +74,7 @@ actor APIClient {
     }
 
     private func request(path: String, queryItems: [URLQueryItem] = []) throws -> URLRequest {
-        guard var components = URLComponents(string: serverURL + path) else {
-            throw APIError.badURL(serverURL + path)
-        }
+        var components = try endpoint(path: path)
         if !queryItems.isEmpty {
             components.queryItems = queryItems
         }
@@ -115,14 +131,14 @@ actor APIClient {
                 return (data, http)
             } catch {
                 try Task.checkCancellation()
-                logger.notice("Tailnet direct request failed for \(req.url?.host ?? "unknown", privacy: .public): \(error.localizedDescription, privacy: .public). Falling back to system session")
+                logger.notice("Tailnet direct request failed for \(req.url?.host ?? "unknown", privacy: .private): \(error.localizedDescription, privacy: .private). Falling back to system session")
                 let (data, response) = try await session.data(for: req)
                 guard let http = response as? HTTPURLResponse else {
                     throw APIError.badStatus(0)
                 }
 
                 if shouldRetryDirect(request: req, statusCode: http.statusCode) {
-                    logger.notice("System session returned \(http.statusCode, privacy: .public) for \(req.url?.host ?? "unknown", privacy: .public); retrying direct once")
+                    logger.notice("System session returned \(http.statusCode, privacy: .public) for \(req.url?.host ?? "unknown", privacy: .private); retrying direct once")
                     if let (directData, directResponse) = try? await directSession.data(for: req),
                        let directHTTP = directResponse as? HTTPURLResponse {
                         logger.notice("Direct retry after system session returned \(directHTTP.statusCode, privacy: .public)")
@@ -140,7 +156,7 @@ actor APIClient {
             }
 
             if shouldRetryDirect(request: req, statusCode: http.statusCode) {
-                logger.notice("Proxy-like status \(http.statusCode, privacy: .public) for \(req.url?.host ?? "unknown", privacy: .public); retrying direct")
+                logger.notice("Proxy-like status \(http.statusCode, privacy: .public) for \(req.url?.host ?? "unknown", privacy: .private); retrying direct")
                 if let (directData, directResponse) = try? await directSession.data(for: req),
                    let directHTTP = directResponse as? HTTPURLResponse,
                    (200...299).contains(directHTTP.statusCode) {
@@ -154,7 +170,7 @@ actor APIClient {
             guard shouldRetryDirect(request: req, error: error) else {
                 throw error
             }
-            logger.notice("Network error \(error.localizedDescription, privacy: .public) for \(req.url?.host ?? "unknown", privacy: .public); retrying direct")
+            logger.notice("Network error \(error.localizedDescription, privacy: .private) for \(req.url?.host ?? "unknown", privacy: .private); retrying direct")
             let (directData, directResponse) = try await directSession.data(for: req)
             guard let directHTTP = directResponse as? HTTPURLResponse else {
                 throw APIError.badStatus(0)
@@ -310,7 +326,9 @@ enum APIError: LocalizedError {
                 return "Server returned status \(code): \(detail)"
             }
             return "Server returned status \(code)"
-        case .badURL(let url): return "Invalid URL: \(url)"
+        case .badURL:
+            // A pasted URL can contain credentials; never echo those into errors.
+            return String(localized: "Enter an http:// or https:// server address without a username, password, query, or fragment.")
         }
     }
 }

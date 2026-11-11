@@ -45,10 +45,12 @@ final class StoreManagerTests: XCTestCase {
         session.askToBuyEnabled = true
         await store.purchase()
         XCTAssertFalse(store.isProUnlocked)
+        XCTAssertEqual(store.purchaseState, .pending)
         let pending = try XCTUnwrap(session.allTransactions().first)
         try session.approveAskToBuyTransaction(identifier: pending.identifier)
         await waitForEntitlement(true)
         XCTAssertTrue(store.isProUnlocked)
+        XCTAssertEqual(store.purchaseState, .purchased)
     }
 
     private func waitForEntitlement(_ expected: Bool) async {

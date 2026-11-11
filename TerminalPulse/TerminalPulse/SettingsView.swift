@@ -54,7 +54,7 @@ struct SettingsView: View {
                     Text("SERVER URL")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.secondary)
-                    TextField("http://127.0.0.1:8787", text: Binding(get: { serverURL }, set: { cancelConnectionTest(); serverURL = $0 }))
+                    TextField("http://your-mac.local:8787", text: Binding(get: { serverURL }, set: { cancelConnectionTest(); serverURL = $0 }))
                         .font(.system(size: 14, design: .monospaced))
                         .textContentType(.URL)
                         .autocorrectionDisabled()
@@ -418,6 +418,12 @@ struct SettingsView: View {
                         Text("Purchase restored.")
                             .font(.caption2)
                             .foregroundStyle(.green)
+                    }
+
+                    if store.purchaseState == .pending {
+                        Text("Purchase awaiting approval. Pro unlocks when Apple confirms it; free features remain available.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
                     if case .failed(let msg) = store.purchaseState {

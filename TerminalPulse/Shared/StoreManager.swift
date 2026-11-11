@@ -24,6 +24,7 @@ final class StoreManager {
     enum PurchaseState: Equatable {
         case idle
         case purchasing
+        case pending
         case purchased
         case restoring
         case restored
@@ -68,6 +69,7 @@ final class StoreManager {
                transaction.productID == Self.proProductID,
                transaction.revocationDate == nil, !transaction.isUpgraded {
                 isProUnlocked = true
+                if purchaseState == .pending { purchaseState = .purchased }
                 return
             }
         }
@@ -100,7 +102,7 @@ final class StoreManager {
             case .userCancelled:
                 purchaseState = .idle
             case .pending:
-                purchaseState = .idle
+                purchaseState = .pending
             @unknown default:
                 purchaseState = .idle
             }

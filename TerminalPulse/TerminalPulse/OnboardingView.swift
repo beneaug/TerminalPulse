@@ -5,6 +5,8 @@ struct OnboardingView: View {
     @Binding var isComplete: Bool
     private let installCommand = "brew install beneaug/tmuxonwatch/tmuxonwatch && tmuxonwatch-install"
     @State private var currentStep = 0
+    @State private var copiedInstallCommand = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(LanguageManager.preferredLanguageKey) private var preferredLanguage = ""
     @State private var showLanguageRestartAlert = false
 
@@ -20,6 +22,7 @@ struct OnboardingView: View {
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .tracking(1)
                             .foregroundStyle(TerminalColors.productAccent)
+                            .accessibilityLabel(Text("Step \(currentStep + 1) of 3"))
 
                         Spacer()
 
@@ -57,35 +60,36 @@ struct OnboardingView: View {
                                 .frame(height: 2)
                         }
                     }
+                    .accessibilityHidden(true)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Text("Step \(currentStep + 1) of 3"))
-
-                Spacer()
-
-                switch currentStep {
-                case 0:
-                    installStep
-                case 1:
-                    connectStep
-                case 2:
-                    doneStep
-                default:
-                    EmptyView()
+                GeometryReader { geometry in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            Spacer(minLength: 24)
+                            switch currentStep {
+                            case 0: installStep
+                            case 1: connectStep
+                            case 2: doneStep
+                            default: EmptyView()
+                            }
+                            Spacer(minLength: 24)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                    .id(currentStep)
                 }
-
-                Spacer()
 
                 // Navigation
                 HStack {
                     if currentStep > 0 {
                         Button("Back") {
                             cancelConnectionTest()
-                            withAnimation { currentStep -= 1 }
+                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { currentStep -= 1 }
                         }
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(.white.opacity(0.65))
                     }
 
                     Spacer()
@@ -94,8 +98,8 @@ struct OnboardingView: View {
                         Button("Skip") {
                             completeOnboarding()
                         }
-                        .foregroundStyle(.white.opacity(0.3))
-                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.65))
+                        .font(.subheadline)
                     }
                 }
                 .padding(.horizontal, 24)
@@ -119,29 +123,31 @@ struct OnboardingView: View {
                 .foregroundStyle(TerminalColors.productAccent)
 
             Text("Install the Server")
-                .font(.system(size: 30, weight: .black))
+                .font(.largeTitle.weight(.black))
                 .tracking(-1.2)
                 .foregroundStyle(.white)
 
             Text("Run this on the Mac where tmux is running:")
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.6))
 
             HStack {
                 Text(installCommand)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.caption.monospaced())
                     .foregroundStyle(TerminalColors.productAccent)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Button {
                     UIPasteboard.general.string = installCommand
+                    copiedInstallCommand = true
                 } label: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.white.opacity(0.5))
+                    Image(systemName: copiedInstallCommand ? "checkmark" : "doc.on.doc")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.65))
                 }
+                .frame(minWidth: 44, minHeight: 44)
                 .accessibilityLabel("Copy install command")
+                .accessibilityValue(copiedInstallCommand ? Text("Copied") : Text(""))
             }
             .padding(16)
             .background(Color.white.opacity(0.05))
@@ -153,16 +159,17 @@ struct OnboardingView: View {
             .padding(.horizontal, 24)
 
             Text("The installer sets up Python, generates a secure token, and starts the server.")
-                .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.4))
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.65))
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 32)
 
             Button {
-                withAnimation { currentStep = 1 }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { currentStep = 1 }
             } label: {
                 Text("Next: Connect")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.headline)
                     .foregroundStyle(.black)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
@@ -175,7 +182,7 @@ struct OnboardingView: View {
                 activateDemo()
             } label: {
                 Text("Try Demo")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(TerminalColors.productAccent)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -226,13 +233,14 @@ struct OnboardingView: View {
                 .foregroundStyle(TerminalColors.productAccent)
 
             Text("Connect to Server")
-                .font(.system(size: 24, weight: .bold))
+                .font(.title2.bold())
                 .foregroundStyle(.white)
 
             Text("Scan the QR code from the install script, or enter details manually.")
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.6))
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 32)
 
             Button {
@@ -242,7 +250,7 @@ struct OnboardingView: View {
                     Image(systemName: "qrcode")
                     Text("Scan QR Code")
                 }
-                .font(.system(size: 16, weight: .semibold))
+                .font(.headline)
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
@@ -271,10 +279,10 @@ struct OnboardingView: View {
             VStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("SERVER URL")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.4))
-                    TextField("http://127.0.0.1:8787", text: Binding(get: { serverURL }, set: { cancelConnectionTest(); pendingRemoteConfig = nil; serverURL = $0 }))
-                        .font(.system(size: 14, design: .monospaced))
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.65))
+                    TextField("http://your-mac.local:8787", text: Binding(get: { serverURL }, set: { cancelConnectionTest(); pendingRemoteConfig = nil; serverURL = $0 }))
+                        .font(.subheadline.monospaced())
                         .foregroundStyle(.white)
                         .textContentType(.URL)
                         .autocorrectionDisabled()
@@ -289,12 +297,17 @@ struct OnboardingView: View {
                         .accessibilityLabel("Server URL")
                 }
 
+                Text("Use your Mac’s LAN address or Tailscale hostname. 127.0.0.1 points to this iPhone.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.65))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text("AUTH TOKEN")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.65))
                     SecureField("Paste token here", text: Binding(get: { authToken }, set: { cancelConnectionTest(); pendingRemoteConfig = nil; authToken = $0 }))
-                        .font(.system(size: 14, design: .monospaced))
+                        .font(.subheadline.monospaced())
                         .foregroundStyle(.white)
                         .padding(10)
                         .background(Color.white.opacity(0.05))
@@ -328,8 +341,8 @@ struct OnboardingView: View {
                         Text("Test Connection")
                     }
                 }
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(connectionStatus.isSuccess ? .white : .black)
+                .font(.headline)
+                .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(TerminalColors.productAccent)
@@ -340,7 +353,7 @@ struct OnboardingView: View {
 
             if let msg = connectionStatus.failureMessage {
                 Text(msg)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.caption.monospaced())
                     .foregroundStyle(.red)
                     .padding(.horizontal, 24)
                     .accessibilityLabel(Text("Connection error: \(msg)"))
@@ -357,18 +370,19 @@ struct OnboardingView: View {
                 .foregroundStyle(TerminalColors.productAccent)
 
             Text("Server saved")
-                .font(.system(size: 24, weight: .bold))
+                .font(.title2.bold())
                 .foregroundStyle(.white)
 
             Text(readiness?.message ?? "")
-                .font(.system(size: 14))
+                .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.6))
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 32)
 
             VStack(alignment: .leading, spacing: 12) {
                 Text("Open the Watch app to check its connection. Remote notifications require separate setup in Settings.")
-                    .font(.system(size: 14))
+                    .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.8))
             }
             .padding(20)
@@ -380,7 +394,7 @@ struct OnboardingView: View {
                 completeOnboarding()
             } label: {
                 Text("Continue")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.headline)
                     .foregroundStyle(.black)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
@@ -468,7 +482,7 @@ struct OnboardingView: View {
                 }
                 readiness = result
                 connectionStatus = .success
-                withAnimation { currentStep = 2 }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { currentStep = 2 }
             } catch {
                 guard !Task.isCancelled, connectionAttempt == attempt else { return }
                 connectionStatus = .failure(error.localizedDescription)
@@ -481,14 +495,14 @@ struct OnboardingView: View {
         connectionTask?.cancel()
         connectionAttempt = UUID()
         UserDefaults.standard.set(true, forKey: "onboardingComplete")
-        withAnimation { isComplete = true }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { isComplete = true }
     }
 
     private func activateDemo() {
         DemoData.activate()
         UserDefaults.standard.set("http://127.0.0.1:8787", forKey: "serverURL")
         UserDefaults.standard.set(true, forKey: "onboardingComplete")
-        withAnimation { isComplete = true }
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { isComplete = true }
     }
 
 

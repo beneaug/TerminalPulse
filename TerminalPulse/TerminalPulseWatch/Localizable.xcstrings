@@ -2,6 +2,7 @@
   "sourceLanguage" : "en",
   "version" : "1.0",
   "strings" : {
+    "Enter an http:// or https:// server address without a username, password, query, or fragment." : {"localizations": {"ja": {"stringUnit": {"state": "translated", "value": "http:// または https:// で始まるサーバーアドレスを入力してください。ユーザー名、パスワード、クエリ、フラグメントは含めないでください。"}}}},
     "Open iPhone and retry switch." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "iPhoneを開いて切り替えを再試行してください。" } } } },
     "Update both apps if needed." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "必要に応じて両方のアプリを更新してください。" } } } },
     "Refresh on iPhone to enable input." : { "localizations" : { "ja" : { "stringUnit" : { "state" : "translated", "value" : "iPhoneで更新して入力を有効にしてください。" } } } },
