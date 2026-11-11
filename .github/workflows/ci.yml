@@ -31,25 +31,13 @@ jobs:
   apple:
     name: Apple Builds
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Test networking, refresh policy, and models
         run: swift test
-
-      - name: Test app lifecycle, reading consistency, and local purchases
-        run: |
-          simulator_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for runtime,devices in d["devices"].items() if ".iOS-" in runtime for x in devices if x["name"].startswith("iPhone")))')
-          xcodebuild \
-            -project TerminalPulse/TerminalPulse.xcodeproj \
-            -scheme TerminalPulse \
-            -configuration Debug \
-            -destination "platform=iOS Simulator,id=$simulator_id" \
-            -only-testing:TmuxAppTests \
-            CODE_SIGNING_ALLOWED=NO \
-            DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
-            test
 
       - name: Build iOS App (Debug)
         run: |
@@ -90,3 +78,34 @@ jobs:
             -destination 'generic/platform=watchOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+      - name: Test app lifecycle, reading consistency, and local purchases
+        timeout-minutes: 12
+        run: |
+          simulator_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for runtime,devices in d["devices"].items() if ".iOS-" in runtime for x in devices if x["name"].startswith("iPhone")))')
+          mkdir -p TestResults
+          xcodebuild -version
+          xcrun simctl bootstatus "$simulator_id" -b
+          xcodebuild \
+            -project TerminalPulse/TerminalPulse.xcodeproj \
+            -scheme TerminalPulse \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            -only-testing:TmuxAppTests \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 120 \
+            -resultBundlePath TestResults/AppTests.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
+            test
+
+      - name: Preserve app-test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-test-results
+          path: TestResults/
+          if-no-files-found: warn
+          retention-days: 7
