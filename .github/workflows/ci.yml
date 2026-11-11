@@ -79,12 +79,27 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
+  app-tests:
+    name: App Tests (iOS 26.2)
+    # iOS 26.4.1's command-line StoreKit service rejects SKTestSession
+    # configuration (SKInternalErrorDomain 3). Keep all purchase assertions
+    # on the locally verified runtime; newer SDK builds remain above.
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Test app lifecycle, reading consistency, and local purchases
         timeout-minutes: 12
         run: |
-          simulator_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for runtime,devices in d["devices"].items() if ".iOS-" in runtime for x in devices if x["name"].startswith("iPhone")))')
           mkdir -p TestResults
-          xcodebuild -version
+          test -d "$DEVELOPER_DIR"
+          xcodebuild -version | tee TestResults/xcode-version.txt
+          xcrun simctl list devices available -j > TestResults/simulators.json
+          simulator_id=$(python3 -c 'import json; d=json.load(open("TestResults/simulators.json")); matches=[x["udid"] for x in d["devices"].get("com.apple.CoreSimulator.SimRuntime.iOS-26-2", []) if x["name"].startswith("iPhone")]; assert matches, "Required iOS 26.2 simulator is unavailable; do not substitute a different runtime"; print(matches[0])')
           xcrun simctl bootstatus "$simulator_id" -b
           xcodebuild \
             -project TerminalPulse/TerminalPulse.xcodeproj \
